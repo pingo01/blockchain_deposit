@@ -43,14 +43,20 @@ const storage = multer.diskStorage({
     cb(null, uploadConfig.uploadDir); // 指向暂存目录
   },
   // 2. 暂存文件名（时间戳 + 原文件名，避免重复覆盖）
+   // 👇 修改：服务器存储文件名 = 文件哈希值 + 扩展名（无中文，彻底避免乱码）
   filename: (req, file, cb) => {
-    const uniqueFileName = Date.now() + '-' + file.originalname;
-    cb(null, uniqueFileName);
+    // 先获取文件扩展名（之前在 fileFilter 里挂载的 fileExt）
+    const fileExt = file.fileExt;
+    // 生成临时哈希值（用时间戳+随机数，避免上传中重名，后续会用真实文件哈希重命名）
+    const tempHash = Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+    const storedFileName = tempHash + fileExt;
+    cb(null, storedFileName);
   }
 });
 
 // ---------------- multer 配置：文件校验（格式 + 大小）----------------
 const fileFilter = (req, file, cb) => {
+
   // 获取文件后缀名（转小写，避免大小写问题，如 .PDF 和 .pdf）
   const fileExt = path.extname(file.originalname).toLowerCase();
   // 获取文件 MIME 类型（如 application/pdf）
@@ -68,6 +74,8 @@ const fileFilter = (req, file, cb) => {
     return cb(error, false); // 校验失败，拒绝接收文件
   }
 
+  // 👇 新增：把 fileExt 挂载到 file 对象上，供后续 uploadFile 函数使用
+  file.fileExt = fileExt;
   cb(null, true); // 校验通过，接收文件
 };
 
@@ -89,18 +97,30 @@ const uploadFile = (req, res) => {
 
     // 生成文件 SHA256 哈希值（传入文件暂存路径）
     const fileSha256 = sha256(file.path);
+    // 服务器最终存储文件名 = 哈希值 + 扩展名（无中文，无乱码）
+    const finalStoredFileName = fileSha256 + file.fileExt;
+    // 最终存储路径
+    const finalStoredPath = path.join(uploadConfig.uploadDir, finalStoredFileName);
+
+
+    // 重命名文件：从临时名改为「哈希值+扩展名」
+    fs.renameSync(file.path, finalStoredPath);
+
+        // 👇 必须加：对中文原文件名做 UTF-8 编码（和前端 decodeURIComponent 对应）
+    const encodedFileName = encodeURIComponent(file.originalname);
 
     // 构造文件元数据（返回给前端，后续模块三存证需用到 sha256 和 userId）
+     // 👇 修改：从 file 对象获取 fileExt（之前在 fileFilter 里挂载的）
     const fileMeta = {
-      fileName: file.originalname,    // 原文件名
-      fileSize: file.size,            // 文件大小（字节）
-      fileType: file.mimetype,        // 文件类型（如 application/pdf）
-      fileExt: fileExt,               // 文件后缀名（如 .pdf）
-      storedFileName: file.filename,  // 服务器暂存文件名（时间戳-原文件名）
-      storedPath: file.path,          // 服务器暂存路径（相对路径）
-      sha256Hash: fileSha256,         // 核心：文件唯一哈希值
-      uploadTime: new Date().toISOString(), // 上传时间（ISO格式）
-      userId: req.user.userId         // 上传者 ID（关联模块一用户）
+      fileName: file.originalname,// 原文件名,原中文文件名（如「屏幕截图 2025-09-15 223137.png」，用户可见）
+      storedFileName: finalStoredFileName, // 服务器存储名（哈希值+扩展名，无乱码）
+      storedPath: finalStoredPath,         // 服务器存储路径
+      fileSize: file.size,// 文件大小（字节）
+      fileType: file.mimetype, // 文件类型（如 application/pdf）
+      fileExt: file.fileExt, //file.originalname 文件后缀名（如 .pdf）现在有定义了！来自 fileFilter 挂载的属性
+      sha256Hash: fileSha256,// 核心：文件唯一哈希值
+      uploadTime: new Date().toISOString(),// 上传时间（ISO格式）
+      userId: req.user.userId// 上传者 ID（关联模块一用户）
     };
 
     // 返回成功结果给前端
@@ -110,9 +130,12 @@ const uploadFile = (req, res) => {
       data: fileMeta
     });
 
-  } catch (err) {
-    // 捕获校验错误或哈希生成错误，返回给前端
-    res.status(400).json({
+   } catch (err) {
+    // 捕获错误时，删除临时文件（避免垃圾文件）
+    if (req.file) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(400).json({// 捕获校验错误或哈希生成错误，返回给前端
       success: false,
       msg: err.message || '文件上传失败！'
     });

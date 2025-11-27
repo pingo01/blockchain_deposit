@@ -1,23 +1,18 @@
+// src/main.js 正确代码
 import { createApp } from 'vue';
-import { createRouter, createWebHistory } from 'vue-router';
+import { createPinia } from 'pinia'; // 新增：引入 Pinia（状态管理必需）
 import ElementPlus from 'element-plus'; // 引入 Element Plus 组件库
 import 'element-plus/dist/index.css'; // 引入 Element Plus 样式（必须）
 import App from './App.vue';
-import UploadView from './views/UploadView.vue'; // 后续创建的上传页面
+// 👇 关键修改：删除自己定义的路由，引入 src/router/index.js 里的正确路由
+import router from './router/index.js'; 
 
-// 路由配置（仅上传页面，后续可扩展其他页面）
-const routes = [
-  { path: '/', name: 'Upload', component: UploadView } // 默认访问上传页面
-];
+// 👇 新增：创建 Pinia 实例（用户状态存储必需，之前漏了！）
+const pinia = createPinia();
 
-// 创建路由实例
-const router = createRouter({
-  history: createWebHistory(),
-  routes
-});
-
-// 创建 Vue 实例并挂载
+// 创建 Vue 实例并挂载（只注册正确的 router 和 pinia）
 createApp(App)
   .use(ElementPlus) // 注册 Element Plus
-  .use(router)      // 注册路由
-  .mount('#app');   // 挂载到 index.html 的 #app 节点
+  .use(pinia)       // 注册 Pinia（必须，否则用户登录状态存不了）
+  .use(router)      // 注册正确的路由（来自 src/router/index.js）
+  .mount('#app');

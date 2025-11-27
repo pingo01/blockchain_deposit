@@ -65,6 +65,7 @@ import { ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import { uploadFile } from '@/api/fileApi'; // 引入上传接口
 import { isLogin } from '@/utils/auth'; // 引入登录判断工具
+import { depositFileToBlockchain } from '@/api/blockchainApi'; // 引入上链接口
 
 export default {
   name: 'FileUpload',
@@ -100,22 +101,46 @@ export default {
       return true; // 预校验通过，允许上传
     };
 
-    // ---------------- 自定义上传逻辑（调用后端接口）----------------
-    const handleCustomUpload = async (options) => {
-      const file = options.file; // 获取选择的文件
-      try {
-        // 调用后端上传接口
-        const res = await uploadFile(file);
-        // 上传成功，更新响应式变量
-        uploadSuccess.value = true;
-        fileMeta.value = res.data;
-        fileList.value = []; // 清空文件列表
-        ElMessage.success(res.msg); // 提示成功
-      } catch (err) {
-        // 上传失败，提示错误信息
-        ElMessage.error(err.message);
-      }
-    };
+    // ---------------- 自定义上传逻辑（模块二上传 + 模块三上链）----------------
+      const handleCustomUpload = async (options) => {
+        const file = options.file; // 获取选择的文件
+        try {
+          // ① 调用模块二接口：文件上传 + 生成 SHA256 哈希
+          const uploadRes = await uploadFile(file);
+          if (!uploadRes.success) {
+            throw new Error(uploadRes.msg || '文件上传失败');
+          }
+
+          // ② 调用模块三接口：将文件哈希+元数据存证上链（核心联动）
+          const blockchainRes = await depositFileToBlockchain(uploadRes.data);
+          if (!blockchainRes.success) {
+            throw new Error(blockchainRes.msg || '存证上链失败');
+          }
+
+          // ③ 整合前端本地文件名 + 模块二元数据 + 模块三存证信息
+          const localOriginalFileName = file.name; // 前端本地中文文件名（无乱码）
+          fileMeta.value = {
+            ...uploadRes.data, // 模块二：哈希值、文件大小、类型等
+            fileName: localOriginalFileName, // 覆盖为前端本地中文文件名
+            depositId: blockchainRes.data.depositRecord.id, // 模块三：存证编号
+            blockIndex: blockchainRes.data.block.index, // 模块三：区块索引
+            blockHash: blockchainRes.data.block.blockHash, // 模块三：区块哈希
+          };
+
+          // ④ 更新状态并提示
+          uploadSuccess.value = true;
+          fileList.value = []; // 清空文件列表
+          ElMessage.success(`
+            文件上传成功！
+            存证上链成功！
+            存证编号：${fileMeta.value.depositId}
+          `);
+
+        } catch (err) {
+          // 上传/上链失败，提示错误
+          ElMessage.error(`操作失败：${err.message}`);
+        }
+      };
 
     // ---------------- 移除已选择的文件 ----------------
     const handleRemoveFile = (file, list) => {
