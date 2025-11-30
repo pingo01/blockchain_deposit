@@ -2,15 +2,38 @@
   <div class="login-container">
     <el-card class="login-card">
       <h2 class="login-title">用户登录</h2>
-      <el-form :model="loginForm" :rules="loginRules" ref="loginFormRef" label-width="80px">
-        <el-form-item label="用户名" prop="username">
-          <el-input v-model="loginForm.username" placeholder="请输入用户名"></el-input>
+      <el-form 
+        :model="loginForm" 
+        :rules="loginRules" 
+        ref="loginFormRef" 
+        label-width="113px"
+      >
+        <el-form-item label="用户名/手机号" prop="username">
+          <el-input 
+            v-model="loginForm.username" 
+            placeholder="请输入用户名/手机号"
+            :disabled="isLoading" 
+          ></el-input>
         </el-form-item>
         <el-form-item label="密码" prop="password">
-          <el-input v-model="loginForm.password" type="password" placeholder="请输入密码"></el-input>
+          <el-input 
+            v-model="loginForm.password" 
+            type="password" 
+            placeholder="请输入密码"
+            :disabled="isLoading" 
+          ></el-input>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="handleLogin" class="login-btn">登录</el-button>
+          <el-button 
+            type="primary" 
+            @click="handleLogin" 
+            class="login-btn"
+            :loading="isLoading" 
+            :disabled="isLoading"
+            @dblclick.prevent="() => {}"
+          >
+            登录
+          </el-button>
           <el-button type="text" @click="goToRegister">注册账号</el-button>
           <el-button type="text" @click="goToResetPwd">忘记密码？</el-button>
         </el-form-item>
@@ -23,52 +46,60 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/userStore';
-import { ElMessage } from 'element-plus';
+//import { ElMessage } from 'element-plus';
 
 export default {
   name: 'LoginView',
   setup() {
     const router = useRouter();
     const userStore = useUserStore();
-    const loginFormRef = ref(null); // 表单引用
-
-    // 登录表单数据
+    const loginFormRef = ref(null);
     const loginForm = ref({
       username: '',
       password: ''
     });
 
-    // 表单校验规则
     const loginRules = ref({
-      username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
-      password: [{ required: true, message: '请输入密码', trigger: 'blur' }, { min: 6, message: '密码长度至少6位', trigger: 'blur' }]
+      username: [
+        { required: true, message: '请输入用户名/手机号', trigger: 'blur' }
+      ],
+      password: [
+        { required: true, message: '请输入密码', trigger: 'blur' },
+        { min: 6, message: '密码长度至少6位', trigger: 'blur' }
+      ]
     });
 
-    // 处理登录
+    const isLoading = ref(false);
+
     const handleLogin = async () => {
+      if (isLoading.value) return;
+      isLoading.value = true;
       try {
-        // 表单校验
         await loginFormRef.value.validate();
-        // 调用 Pinia 登录动作
+        // 🔥 1. 去掉 catch(() => {})，让错误正常抛出（避免重复请求误判）
         await userStore.login(loginForm.value);
-        ElMessage.success('登录成功！');
-        // 根据角色跳对应页面（上传者跳上传页，验证者跳验证页）
-        if (userStore.userInfo.role === 'uploader') {
-          router.push('/upload');
-        } else {
-          router.push('/verify');
-        }
       } catch (err) {
-        ElMessage.error(err.message);
+        console.error('登录失败：', err);
+        // 🔥 2. 错误提示只在 catch 中处理（避免 finally 误判）
+        //ElMessage.error(err.message || '登录失败，请重试');
+      } finally {
+        // 🔥 3. 去掉 finally 中的所有提示！只做跳转逻辑
+        const hasValidUserInfo = Object.keys(userStore.userInfo).length > 0 && userStore.userInfo.userId;
+        if (hasValidUserInfo) {
+          // 去掉 ElMessage.success('登录成功！') → 只在 userStore 中提示一次
+          setTimeout(() => {
+            router.replace('/dashboard');
+          }, 300);
+        }
+
+        isLoading.value = false;
       }
     };
 
-    // 跳注册页面
     const goToRegister = () => {
       router.push('/register');
     };
 
-    // 跳密码重置页面
     const goToResetPwd = () => {
       router.push('/reset-password');
     };
@@ -79,7 +110,8 @@ export default {
       loginFormRef,
       handleLogin,
       goToRegister,
-      goToResetPwd
+      goToResetPwd,
+      isLoading
     };
   }
 };

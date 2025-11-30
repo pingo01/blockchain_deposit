@@ -41,6 +41,10 @@
         <span class="meta-value">{{ fileMeta.fileName }}</span>
       </div>
       <div class="meta-item">
+        <span class="meta-label">存证ID：</span>
+        <span class="meta-value">{{ fileMeta.depositId }}</span>
+      </div>
+      <div class="meta-item">
         <span class="meta-label">文件大小：</span>
         <span class="meta-value">{{ (fileMeta.fileSize / 1024).toFixed(2) }} KB</span>
       </div>
@@ -50,7 +54,7 @@
       </div>
       <div class="meta-item">
         <span class="meta-label">SHA256 哈希值：</span>
-        <span class="meta-value hash-value">{{ fileMeta.sha256Hash }}</span>
+        <span class="meta-value hash-value">{{ fileMeta.fileHash }}</span>
       </div>
       <div class="meta-item">
         <span class="meta-label">上传时间：</span>
@@ -65,7 +69,7 @@ import { ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import { uploadFile } from '@/api/fileApi'; // 引入上传接口
 import { isLogin } from '@/utils/auth'; // 引入登录判断工具
-import { depositFileToBlockchain } from '@/api/blockchainApi'; // 引入上链接口
+//import { depositFileToBlockchain } from '@/api/blockchainApi'; // 引入上链接口
 
 export default {
   name: 'FileUpload',
@@ -111,21 +115,35 @@ export default {
             throw new Error(uploadRes.msg || '文件上传失败');
           }
 
+          // 🔥 直接使用后端返回的统一存证ID和元数据（无需二次上链）
+        const { depositId, fileName, fileSize, fileType, fileHash, uploadTime, blockStatus = '已存证' } = uploadRes.data;
+          /*
           // ② 调用模块三接口：将文件哈希+元数据存证上链（核心联动）
-          const blockchainRes = await depositFileToBlockchain(uploadRes.data);
-          if (!blockchainRes.success) {
-            throw new Error(blockchainRes.msg || '存证上链失败');
-          }
+          // 修复2：添加 sha256Hash 字段，值为模块二的 fileHash
+           const blockchainRes = await depositFileToBlockchain({
+          ...uploadRes.data, // 模块二的其他字段（fileName、fileSize 等）
+          sha256Hash: uploadRes.data.fileHash, // 关键：对齐模块三要求的字段名
+          userId: uploadRes.data.userId || 3 // 确保 userId 传递（根据模块二返回调整）
+        });
+        if (!blockchainRes.success) {
+          throw new Error(blockchainRes.msg || '存证上链失败');
+        }
 
           // ③ 整合前端本地文件名 + 模块二元数据 + 模块三存证信息
           const localOriginalFileName = file.name; // 前端本地中文文件名（无乱码）
-          fileMeta.value = {
-            ...uploadRes.data, // 模块二：哈希值、文件大小、类型等
-            fileName: localOriginalFileName, // 覆盖为前端本地中文文件名
-            depositId: blockchainRes.data.depositRecord.id, // 模块三：存证编号
-            blockIndex: blockchainRes.data.block.index, // 模块三：区块索引
-            blockHash: blockchainRes.data.block.blockHash, // 模块三：区块哈希
-          };
+
+          const formalDepositId = blockchainRes.data.depositRecord.id;
+*/
+          // 整合元数据（前端展示用）
+        fileMeta.value = {
+          fileName: fileName, // 后端返回的UTF-8中文文件名（无乱码）
+          depositId: depositId, // 后端生成的统一存证ID（日期+序号）
+          fileSize: fileSize,
+          fileType: fileType,
+          fileHash: fileHash,
+          uploadTime: uploadTime,
+          blockStatus: blockStatus // 区块链存证状态
+        };
 
           // ④ 更新状态并提示
           uploadSuccess.value = true;
@@ -133,7 +151,7 @@ export default {
           ElMessage.success(`
             文件上传成功！
             存证上链成功！
-            存证编号：${fileMeta.value.depositId}
+            存证ID：${depositId}
           `);
 
         } catch (err) {

@@ -9,6 +9,12 @@ const register = async (req, res) => {
   try {
     // 1. 获取前端传参（用户名、密码、角色、昵称、手机号）
     const { username, password, role, nickname, phone } = req.body;
+    
+    // 新增：校验用户名不能是手机号格式
+    const phoneRegex = /^1[3-9]\d{9}$/;
+    if (phoneRegex.test(username)) {
+      return res.status(400).json({ success: false, msg: '用户名不能是11位手机号格式！' });
+    }
 
     // 2. 校验必填参数（避免空值）
     if (!username || !password || !role) {
@@ -68,39 +74,62 @@ const register = async (req, res) => {
   }
 };
 
-// ---------------- 2. 用户登录 ----------------
+// ---------------- 2. 用户登录 （核心修改：支持用户名/手机号双登录）----------------
 const login = async (req, res) => {
   try {
     // 1. 获取前端传参（用户名、密码）
-    const { username, password } = req.body;
-
+    console.log('===== 登录接口被触发 =====');
+    console.log('前端传入的参数：', req.body); // 看是否拿到用户名密码
+    const { username: loginInput, password } = req.body;
+console.log('解析后的登录输入：', loginInput);
+    console.log('解析后的密码：', password);
     // 2. 校验必填参数
-    if (!username || !password) {
-      return res.status(400).json({ success: false, msg: '用户名和密码不能为空！' });
+    if (!loginInput || !password) {
+      return res.status(400).json({ success: false, msg: '用户名/手机号和密码不能为空！' });
     }
 
-    // 3. 查询用户是否存在
-    const users = await executeSql(
-      'SELECT id, username, password, role, nickname, status FROM user WHERE username = ?',
-      [username]
-    );
+     // 3. 关键：判断输入格式，定向查询（避免冲突）
+    const phoneRegex = /^1[3-9]\d{9}$/;
+    let querySql = '';
+    let queryParams = [];
+
+    if (phoneRegex.test(loginInput)) {
+      // 输入是手机号格式 → 只查询 phone 字段
+      querySql = 'SELECT id, username, password, role, nickname, status, phone FROM user WHERE phone = ? LIMIT 1';
+      queryParams = [loginInput];
+    } else {
+      // 输入是用户名格式 → 只查询 username 字段
+      querySql = 'SELECT id, username, password, role, nickname, status, phone FROM user WHERE username = ? LIMIT 1';
+      queryParams = [loginInput];
+    }
+
+    // 执行查询
+    const users = await executeSql(querySql, queryParams);
+    console.log('数据库查询结果：', users); // 🔥 看是否查询到用hu
     const user = users[0];
-    if (!user) {
-      return res.status(401).json({ success: false, msg: '用户名或密码错误！' });
-    }
+     console.log('查询到的用户：', user); // 🔥 看是否有用户数据
 
-    // 4. 校验账号状态（是否正常）
+    // 4. 校验用户是否存在
+    if (!user) {
+      console.log('用户不存在，返回 401');
+          return res.status(401).json({ success: false, msg: '用户名/手机号或密码错误！' });
+        }
+
+    // 5. 校验账号状态（是否正常）
     if (user.status !== '正常') {
+      console.log('账号状态异常，返回 403');
       return res.status(403).json({ success: false, msg: '账号已被禁用，请联系管理员！' });
     }
 
-    // 5. 校验密码（加密后对比）
+    // 6. 校验密码（加密后对比）
     const isPasswordValid = await bcrypt.compare(password, user.password);
+    console.log('密码校验结果：', isPasswordValid); // 🔥 看密码是否正确
     if (!isPasswordValid) {
-      return res.status(401).json({ success: false, msg: '用户名或密码错误！' });
+      console.log('密码错误，返回 401');
+      return res.status(401).json({ success: false, msg: '用户名/手机号或密码错误！' });
     }
 
-    // 6. 生成 JWT Token（包含用户 ID 和角色，供模块二校验）
+    // 7. 生成 JWT Token（包含用户 ID 和角色，供模块二校验）
     const token = jwt.sign(
       {
         userId: user.id,
@@ -110,7 +139,9 @@ const login = async (req, res) => {
       process.env.JWT_SECRET, // 与模块二一致的密钥
       { expiresIn: process.env.JWT_EXPIRES_IN } // 有效期 24 小时
     );
-
+console.log('生成的 Token：', token);
+    console.log('即将返回成功响应');
+    
     // 7. 返回登录成功结果（Token + 用户信息）
     res.status(200).json({
       success: true,
@@ -122,11 +153,13 @@ const login = async (req, res) => {
           username: user.username,
           role: user.role,
           nickname: user.nickname,
-          status: user.status
+          status: user.status,
+          phone: user.phone // 补充 phone 字段，前端就能拿到了
         }
       }
     });
   } catch (err) {
+    console.error('===== 登录接口错误 =====', err);
     res.status(500).json({ success: false, msg: '登录失败：' + err.message });
   }
 };
@@ -251,4 +284,5 @@ module.exports = {
   resetPassword,
   updateProfile,
   verifyLogin
+  
 };

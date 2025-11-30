@@ -1,6 +1,19 @@
 <template>
   <div class="profile-container">
-    <el-page-header content="个人信息管理" />
+    <!-- 只保留1个Back按钮 + 标题（简化结构） -->
+    <div class="header-bar">
+      <!-- 唯一的返回按钮（绑定跳转） -->
+      <el-button 
+        type="text" 
+        @click="$router.push('/dashboard')" 
+        class="back-btn"
+      >
+        ← Back
+      </el-button>
+      <!-- 页面标题（替换el-page-header，避免重复渲染） -->
+      <h2 class="page-title">个人信息管理</h2>
+    </div>
+
     <el-card class="profile-card">
       <el-form :model="profileForm" :rules="profileRules" ref="profileFormRef" label-width="100px">
         <el-form-item label="用户名" prop="username">
@@ -77,10 +90,11 @@ export default {
     };
 
     // 处理退出登录
+    // 处理退出登录（修改跳转方式）
     const handleLogout = () => {
       userStore.logout();
-      ElMessage.success('退出登录成功！');
-      router.push('/login');
+      //ElMessage.success('退出登录成功！');
+      router.replace('/login'); // 用 replace 替代 push
     };
 
     return {
@@ -101,8 +115,32 @@ export default {
   min-height: 100vh;
 }
 
+/* 头部栏样式（仅一个按钮+标题） */
+.header-bar {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.back-btn {
+  color: #4299e1;
+  font-size: 16px;
+  margin-right: 16px;
+  padding: 0;
+}
+
+.back-btn:hover {
+  color: #3182ce;
+}
+
+.page-title {
+  font-size: 20px;
+  font-weight: 500;
+  color: #2d3748;
+  margin: 0;
+}
+
 .profile-card {
-  margin-top: 20px;
   padding: 30px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
 }

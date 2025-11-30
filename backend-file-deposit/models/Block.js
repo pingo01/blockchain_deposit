@@ -2,11 +2,11 @@
 const crypto = require('crypto');
 
 class Block {
-  constructor(index, prevHash, data) {
+  constructor(index, prevHash, data, timestamp) {
     this.index = index; // 区块索引（第n个区块，从0开始）
-    this.timestamp = new Date().toISOString(); // 区块生成时间
     this.prevHash = prevHash; // 前一区块的哈希值（链式关联核心）
     this.data = data; // 区块数据（存证记录JSON字符串）
+    this.timestamp = timestamp || new Date().toISOString(); // 区块生成时间
     this.hash = this.calculateHash(); // 当前区块的哈希值（不可篡改依据）
   }
 

@@ -26,7 +26,7 @@ class BlockchainService {
         const parsedChain = JSON.parse(chainData);
         // 还原Block实例（JSON解析后会丢失原型方法，需重新构造）
         return parsedChain.map(block => 
-          new Block(block.index, block.prevHash, block.data)
+          new Block(block.index, block.prevHash, block.data,block.timestamp)
         );
       }
       // 本地无数据，创建创世区块并保存
@@ -162,30 +162,31 @@ class BlockchainService {
     };
   }
 
-  // 8. 核心功能：根据存证编号查询存证记录
-  queryDepositByDepositId(depositId) {
-    for (const block of this.chain) {
-      const blockData = block.data;
-      if (blockData.id && blockData.id === depositId) {
-        return {
-          success: true,
-          data: {
-            depositRecord: blockData,
-            blockInfo: {
-              index: block.index,
-              blockHash: block.hash,
-              prevBlockHash: block.prevHash,
-              timestamp: block.timestamp
-            }
+  // 8. 核心功能：根据存证编号查询存证记录（无需修改，已正确匹配 id）
+queryDepositByDepositId(depositId) {
+  for (const block of this.chain) {
+    const blockData = block.data;
+    // 现在 blockData.id 是 DepositRecord 自动生成的存证ID（如 20251127001），能精准匹配
+    if (blockData.id && blockData.id === depositId) {
+      return {
+        success: true,
+        data: {
+          depositRecord: blockData,
+          blockInfo: {
+            index: block.index,
+            blockHash: block.hash,
+            prevBlockHash: block.prevHash,
+            timestamp: block.timestamp
           }
-        };
-      }
+        }
+      };
     }
-    return {
-      success: false,
-      msg: '未查询到该存证编号的记录'
-    };
   }
+  return {
+    success: false,
+    msg: '未查询到该存证编号的记录'
+  };
+}
 
  // 新增：9. 核心功能：按文件名+用户ID查询存证记录（仅返回该用户的匹配记录）
   // 适配模块四“按文件名查询”功能，支持模糊匹配，仅上传者可调用

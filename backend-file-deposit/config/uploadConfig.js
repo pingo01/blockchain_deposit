@@ -1,17 +1,18 @@
-// 文件上传规则配置（课程设计常用格式，可按需调整）
+// uploadConfig.js（修改 uploadDir 为绝对路径）
+const path = require('path'); // 引入 path 模块
+
 module.exports = {
-  // 允许的文件格式（电子合同/版权证书常用类型）
   allowedTypes: [
-    'application/pdf',  // PDF
-    'application/msword',  // DOC
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',  // DOCX
-    'image/png',  // PNG
-    'image/jpeg',  // JPG/JPEG
-    'text/plain'  // TXT
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'image/png',
+    'image/jpeg',
+    'text/plain'
   ],
-  // 允许的文件后缀名（双重校验，避免格式绕过）
   allowedExtensions: ['.pdf', '.doc', '.docx', '.png', '.jpg', '.jpeg', '.txt'],
-  maxSize: 10 * 1024 * 1024,  // 最大文件大小：10MB（单位：字节）
-  uploadDir: './uploads/',    // 文件暂存目录（相对路径，对应项目根目录下的 uploads 文件夹）
-  jwtSecret: 'file_deposit_secret_2025'  // JWT 密钥（必须和模块一登录/注册时一致！）
+  maxSize: 10 * 1024 * 1024,
+  // 🔥 关键修复：使用绝对路径（__dirname 是当前文件所在目录，拼接上级目录的 uploads）
+  uploadDir: path.join(__dirname, '../uploads/'), 
+  jwtSecret: 'file_deposit_secret_2025'
 };

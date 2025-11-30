@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const blockchainController = require('../controllers/blockchainController');
-const { verifyLogin } = require('../controllers/fileController'); // 登录验证中间件
+const { verifyLogin } = require('../middleware/roleAuth');
 
 // 1. 文件哈希存证上链（需要登录）
 router.post('/deposit', verifyLogin, blockchainController.depositFile);

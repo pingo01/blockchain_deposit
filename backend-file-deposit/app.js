@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const fileRoutes = require('./routes/fileRoutes');
+const queryRouter = require('./routes/queryRoutes');
+const verifyRouter = require('./routes/verifyRoutes');
 const authRoutes = require('./routes/authRoutes'); // 新增：引入 auth 路由
 const { testDbConnection } = require('./db/index'); // 新增：引入数据库测试
 const { port } = require('./config/config');
@@ -17,10 +19,25 @@ testDbConnection();
 app.use(express.json({ charset: 'utf-8' }));
 app.use(express.urlencoded({ extended: true, charset: 'utf-8' })); // 补充：表单请求也加 UTF-8
 // 3. 配置跨域（允许前端 Vue 项目访问）
-app.use(cors({
-  origin: 'http://localhost:5173', // 前端默认启动地址（后续会验证）
-  credentials: true // 允许携带 Cookie（课程设计可选，不影响核心功能）
-}));
+// 🔥 替换原有的 cors 配置（关键修改！）
+// 先处理 OPTIONS 预检请求
+app.use((req, res, next) => {
+  // 允许前端地址访问
+  res.header('Access-Control-Allow-Origin', 'http://localhost:5173');
+  // 允许的请求方法（包含 OPTIONS）
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  // 允许的请求头（包含 Authorization 和 Content-Type）
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  // 允许携带 Cookie
+  res.header('Access-Control-Allow-Credentials', 'true');
+  
+  // 预检请求直接返回 200，不往下传递
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  next();
+});
+
 
 // 4. 解析 JSON 请求（前端传 JSON 数据时需要）
 //app.use(express.json());
@@ -30,7 +47,8 @@ app.use(cors({
 app.use('/api/auth', authRoutes); // 模块一用户认证接口：/api/auth/xxx
 app.use('/api/file', fileRoutes); // 模块二文件处理接口（之前的模块二路由）
 app.use('/api/blockchain', require('./routes/blockchainRoutes'));//模块三 注册区块链模块路由（接口前缀：/api/blockchain）
-app.use('/api/query-verify', require('./routes/queryVerifyRoutes')); // 模块四：查询验证
+app.use('/api/query', queryRouter); // 查询接口：/api/query/xxx
+app.use('/api/verify', verifyRouter); // 验证接口：/api/verify/xxx
 
 // 6. 启动服务
 app.listen(PORT, () => {
