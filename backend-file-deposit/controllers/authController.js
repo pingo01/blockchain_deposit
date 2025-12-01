@@ -21,6 +21,11 @@ const register = async (req, res) => {
       return res.status(400).json({ success: false, msg: '用户名、密码、角色不能为空！' });
     }
 
+    // 🌟 2. 密码长度校验（前端已校验，后端再次校验）
+    if (password.length < 6 || password.length > 20) {
+      return res.status(400).json({ success: false, msg: '密码长度需在6-20位之间！' });
+    }
+    
     // 3. 校验角色合法性（只能是 uploader/verifier）
     if (!['uploader', 'verifier'].includes(role)) {
       return res.status(400).json({ success: false, msg: '角色只能是 uploader（上传者）或 verifier（验证者）！' });

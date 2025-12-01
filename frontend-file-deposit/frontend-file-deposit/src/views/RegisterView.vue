@@ -9,6 +9,14 @@
         <el-form-item label="密码" prop="password">
           <el-input v-model="registerForm.password" type="password" placeholder="请输入密码"></el-input>
         </el-form-item>
+         <!-- 🌟 新增：确认密码 -->
+        <el-form-item label="确认密码" prop="confirmPassword">
+          <el-input 
+            v-model="registerForm.confirmPassword" 
+            type="password" 
+            placeholder="请再次输入密码"
+          ></el-input>
+        </el-form-item>
         <el-form-item label="角色" prop="role">
           <el-select v-model="registerForm.role" placeholder="请选择角色">
             <el-option label="上传者（文件存证）" value="uploader"></el-option>
@@ -47,6 +55,7 @@ export default {
     const registerForm = ref({
       username: '',
       password: '',
+      confirmPassword: '', // 确认密码
       role: '',
       nickname: '',
       phone: ''
@@ -54,8 +63,29 @@ export default {
 
     // 表单校验规则
     const registerRules = ref({
-      username: [{ required: true, message: '请输入用户名', trigger: 'blur' }, { min: 3, message: '用户名长度至少3位', trigger: 'blur' },{ pattern: /^(?!1[3-9]\d{9}$).+$/, message: '用户名不能是11位手机号', trigger: 'blur' }],
-      password: [{ required: true, message: '请输入密码', trigger: 'blur' }, { min: 6, message: '密码长度至少6位', trigger: 'blur' }],
+      username: [
+        { required: true, message: '请输入用户名', trigger: 'blur' }, 
+        { min: 3, max: 20, message: '用户名长度需在3-20位之间', trigger: 'blur' },
+        { pattern: /^(?!1[3-9]\d{9}$).+$/, message: '用户名不能是11位手机号', trigger: 'blur' }
+      ],
+      password: [{ required: true, message: '请输入密码', trigger: 'blur' }, 
+      { min: 6, max: 20,message: '密码长度需在6-20位之间', trigger: 'blur' }
+    ],
+    // 🌟 确认密码校验规则
+      confirmPassword: [
+        { required: true, message: '请确认密码', trigger: 'blur' },
+        { 
+          // 自定义校验：判断两次密码是否一致
+          validator: (rule, value, callback) => {
+            if (value !== registerForm.value.password) {
+              callback(new Error('两次输入的密码不一致！'));
+            } else {
+              callback(); // 校验通过
+            }
+          },
+          trigger: 'blur' // 失去焦点时校验
+        }
+      ],
       role: [{ required: true, message: '请选择角色', trigger: 'change' }],
       nickname: [{  message: '请输入昵称', trigger: 'blur' }],
       phone: [ { required: true, message: '请输入手机号', trigger: 'blur' },{ pattern: /^1[3-9]\d{9}$/, message: '请输入合法手机号', trigger: 'blur' }]
