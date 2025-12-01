@@ -263,6 +263,7 @@ verifyFileIntegrity(depositId, verifyHash) {
 
     // ③ 提取原始文件哈希（存证时存储的哈希值）
     const originalHash = depositResult.data.depositRecord.fileHash;
+    const blockInfo = depositResult.data.blockInfo; // 从查询结果中提取区块信息
     console.log('🔍 区块链服务 - 对比哈希：');
     console.log('   原始哈希（存证时）：', originalHash);
     console.log('   待验证哈希（用户上传）：', verifyHash);
@@ -278,7 +279,8 @@ verifyFileIntegrity(depositId, verifyHash) {
         msg: '文件未被篡改，存证记录有效！',
         tampered: false,
         originalHash: originalHash,
-        data: depositResult.data.depositRecord
+        data: depositResult.data.depositRecord,
+        blockInfo: blockInfo // 🌟 新增：返回区块信息（含 index）
       };
     } else {
       console.error('❌ 区块链服务 - 验证失败：文件已被篡改');
@@ -288,7 +290,8 @@ verifyFileIntegrity(depositId, verifyHash) {
         msg: '文件已被篡改！原始哈希与待验证哈希不一致',
         tampered: true,
         originalHash: originalHash,
-        verifyHash: verifyHash
+        verifyHash: verifyHash,
+        blockInfo: blockInfo // 🌟 新增：返回区块信息（含 index）
       };
     }
   } catch (error) {

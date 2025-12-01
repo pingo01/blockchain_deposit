@@ -1,6 +1,6 @@
 <template>
   <div class="verify-container">
-    <!-- 🔥 修改：替换原 el-page-header，添加返回按钮 -->
+    <!-- 修改：替换原 el-page-header，添加返回按钮 -->
     <div class="header-bar">
       <el-button type="text" @click="$router.push('/dashboard')" class="back-btn">
         ← Back
@@ -69,13 +69,13 @@
 
         <!-- 验证成功：展示详细核对信息 -->
         <div v-if="verifyResult.success && verifyResult.data" class="success-detail">
-          <el-descriptions title="存证信息与文件核对" :column="2" border>
-            <el-descriptions-item label="存证ID">{{ verifyResult.data.depositId }}</el-descriptions-item>
-            <el-descriptions-item label="原始文件名">{{ verifyResult.data.fileName }}</el-descriptions-item>
-            <el-descriptions-item label="原始文件哈希（SHA256）">{{ verifyResult.data.fileHash }}</el-descriptions-item>
-            <el-descriptions-item label="待验证文件哈希（SHA256）">{{ currentFileHash }}</el-descriptions-item>
-            <el-descriptions-item label="存证时间">{{ verifyResult.data.depositTime }}</el-descriptions-item>
-            <el-descriptions-item label="区块索引">{{ verifyResult.data.blockIndex }}</el-descriptions-item>
+          <el-descriptions title="存证信息与文件核对" :column="2" border class="fixed-table">
+            <el-descriptions-item label="存证ID">{{ verifyResult.data.depositId || '暂未记录'}}</el-descriptions-item>
+            <el-descriptions-item label="原始文件名">{{ verifyResult.data.fileName || '暂未记录'}}</el-descriptions-item>
+            <el-descriptions-item label="原始文件哈希（SHA256）">{{ verifyResult.data.fileHash || '暂未记录'}}</el-descriptions-item>
+            <el-descriptions-item label="待验证文件哈希（SHA256）">{{ currentFileHash || '暂未记算'}}</el-descriptions-item>
+            <el-descriptions-item label="存证时间">{{ formatTime(verifyResult.data.depositTime) || '暂未记录'}}</el-descriptions-item>
+            <el-descriptions-item label="区块索引">{{ verifyResult.data.blockIndex || '暂未记录'}}</el-descriptions-item>
           </el-descriptions>
           <p class="success-tip">✅ 哈希值完全匹配，文件内容未被修改，存证信息真实有效</p>
         </div>
@@ -121,6 +121,24 @@ export default {
       data: null, // 验证成功的存证数据
       msg: '' // 失败原因
     });
+
+    // 🌟 新增：时间格式化方法（解决时间格式怪异问题）
+    const formatTime = (time) => {
+      if (!time) return '';
+      const date = new Date(time);
+      // 避免 Invalid Date 情况
+      if (isNaN(date.getTime())) return '';
+      // 格式：年-月-日 时:分:秒（本地时区，24小时制）
+      return date.toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+    };
 
     // ======================== 日志：页面初始化 ========================
     console.log('📄 VerifyView - 页面初始化');
@@ -302,6 +320,7 @@ export default {
       currentFileHash,
       verifyForm,
       verifyResult,
+      formatTime, // 🌟 导出时间格式化方法
       handleFileSelect,
       beforeFileUpload,
       startVerify
@@ -317,7 +336,7 @@ export default {
   min-height: 100vh;
 }
 
-/* 🔥 新增：头部样式（和其他页面统一） */
+/* 新增：头部样式（和其他页面统一） */
 .header-bar {
   display: flex;
   align-items: center;
@@ -436,6 +455,28 @@ export default {
 .fail-reason {
   color: #e53e3e;
   font-size: 14px;
+}
+
+/* 🌟 新增：解决内容出框问题（哈希值自动换行） */
+.fixed-table .el-descriptions__content {
+  word-wrap: break-word; /* 长文本自动换行 */
+  word-break: break-all; /* 英文/哈希值强制换行 */
+  white-space: normal; /* 取消默认不换行 */
+  padding: 8px 12px; /* 增加内边距，更美观 */
+}
+
+/* 🌟 新增：调整列宽比例，优化布局 */
+.fixed-table .el-descriptions__item {
+  display: flex;
+  align-items: flex-start; /* 顶部对齐，避免内容错位 */
+}
+.fixed-table .el-descriptions__label {
+  width: 180px; /* 固定标签列宽度 */
+  flex-shrink: 0; /* 标签列不收缩 */
+  font-weight: 500; /* 标签文字加粗，更清晰 */
+}
+.fixed-table .el-descriptions__body {
+  flex: 1; /* 内容列自适应剩余宽度 */
 }
 
 @media (max-width: 768px) {

@@ -23,10 +23,23 @@
           <el-input v-model="profileForm.role" disabled placeholder="角色不可修改"></el-input>
         </el-form-item>
         <el-form-item label="昵称" prop="nickname">
-          <el-input v-model="profileForm.nickname" placeholder="请输入昵称"></el-input>
+          <el-input 
+            v-model="profileForm.nickname" 
+            placeholder="请输入1-20位昵称"
+            maxlength="20"
+            show-word-limit
+            @input="preventSpace('nickname')"
+          ></el-input>
         </el-form-item>
         <el-form-item label="手机号" prop="phone">
-          <el-input v-model="profileForm.phone" placeholder="请输入手机号"></el-input>
+          <el-input 
+            v-model="profileForm.phone" 
+            placeholder="请输入11位合法手机号"
+            type="tel"
+            maxlength="11"
+            show-word-limit
+            @input="trimPhone" 
+          ></el-input>
         </el-form-item>
         <el-form-item label="账号状态" prop="status">
           <el-input v-model="profileForm.status" disabled></el-input>
@@ -62,10 +75,33 @@ export default {
       status: ''
     });
 
+    // 🌟 核心1：禁止昵称输入空格（匹配规则：昵称不能有空格）
+    const preventSpace = (field) => {
+      profileForm.value[field] = profileForm.value[field].replace(/\s+/g, ''); // 移除所有空格
+    };
+
+    // 🌟 核心2：手机号实时去空格（避免用户误输入）
+    const trimPhone = () => {
+      profileForm.value.phone = profileForm.value.phone.trim();
+    };
+
+
     // 表单校验规则
     const profileRules = ref({
-      nickname: [{ required: true, message: '请输入昵称', trigger: 'blur' }],
-      phone: [{required: true, pattern: /^1[3-9]\d{9}$/, message: '请输入合法手机号', trigger: 'blur' }]
+      nickname: [
+        { required: true, message: '请输入昵称', trigger: 'blur' },
+        { min: 1, max: 20, message: '昵称长度需在1-20位之间', trigger: ['blur', 'input'] }, // 实时提示
+        { 
+          pattern: /^[^\s]{1,20}$/, 
+          message: '昵称不能包含空格', 
+          trigger: ['blur', 'input'] // 实时提示
+        }
+      ],
+      phone: [
+        {required: true, pattern: /^1[3-9]\d{9}$/, message: '请输入合法的11位手机号', trigger: 'blur' },
+        { pattern: /^1[3-9]\d{9}$/, message: '请输入合法的11位手机号', trigger: ['blur', 'input'] }, // 实时提示
+        { min: 11, max: 11, message: '手机号长度必须为11位', trigger: ['blur', 'input'] } // 补充长度提示
+      ]
     });
 
     // 页面加载时，初始化表单数据（从 Pinia 获取）
@@ -85,7 +121,7 @@ export default {
         });
         //ElMessage.success('个人信息修改成功！');
       } catch (err) {
-        ElMessage.error(err.message);
+        ElMessage.error(err.message|| '修改失败，请重试');
       }
     };
 
@@ -102,6 +138,8 @@ export default {
       profileRules,
       profileFormRef,
       handleUpdateProfile,
+      preventSpace, // 导出禁止空格方法
+      trimPhone, // 导出手机号去空格方法
       handleLogout
     };
   }

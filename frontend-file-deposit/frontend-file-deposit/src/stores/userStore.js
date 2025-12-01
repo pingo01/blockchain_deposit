@@ -80,39 +80,50 @@ export const useUserStore = defineStore('user', {
       if (now - this.lastOperateTime < this.operateInterval) return;
       this.lastOperateTime = now;
 
-      try {
+      // 🌟 新增：昵称、手机号校验规则（和前端一致）
+      const regex = {
+        nickname: /^[^\s]{1,20}$/, // 1-20位，无空格
+        phone: /^1[3-9]\d{9}$/     // 11位合法手机号
+      };
+
+       try {
+        // 🌟 新增：执行前端预校验（之前漏了调用校验逻辑）
+        // 1. 昵称校验（必填，因为前端表单设置为required）
+        if (!regex.nickname.test(profileData.nickname)) {
+          ElMessage.error('昵称需1-20位，不能包含空格！');
+          return false;
+        }
+
+        // 2. 手机号校验（必填，因为前端表单设置为required）
+        if (!regex.phone.test(profileData.phone)) {
+          ElMessage.error('请输入合法的11位手机号！');
+          return false;
+        }
+
         // 调用修改个人信息接口
         const res = await updateProfileApi(profileData);
         console.log('修改个人信息响应：', res);
 
-        // 核心修改：放宽判断条件（兼容后端可能的返回格式）
-    // 只要后端返回 success: true，就视为修改成功（不管 data.userInfo 是否存在）
-    if (res.success) {
-      // 更新本地状态：优先用后端返回的 userInfo，没有就用表单提交的参数
-      this.userInfo = { 
-        ...this.userInfo, 
-        ...(res.data?.userInfo || profileData) // 兼容后端是否返回 userInfo
-      };
-      localStorage.setItem('userInfo', JSON.stringify(this.userInfo));
-      ElMessage.success(res.msg || '个人信息修改成功！'); // 绿色成功弹窗
-      return res;
-    } else {
-      throw new Error(res.msg || '个人信息修改失败');
-    }
-  } catch (err) {
-    console.error('修改个人信息异常：', err);
-    // 新增：判断错误信息是否是“误判的成功”（可选，根据实际打印调整）
-    if (err.message.includes('修改失败')) {
-      // 后端实际修改成功，但前端判断失败时，强制提示成功
-      ElMessage.success('个人信息修改成功！');
-    } else {
-      ElMessage.error(err.message || '修改失败，请重试');
-    }
-    throw err;
+        if (res.success) {
+          // 更新本地状态：优先用后端返回的 userInfo，没有就用表单提交的参数
+          this.userInfo = { 
+            ...this.userInfo, 
+            ...(res.data?.userInfo || profileData)
+          };
+          localStorage.setItem('userInfo', JSON.stringify(this.userInfo));
+          ElMessage.success(res.msg || '个人信息修改成功！');
+          return res;
+        } else {
+          throw new Error(res.msg || '个人信息修改失败');
+        }
+      } catch (err) {
+        console.error('修改个人信息异常：', err);
+        // 优化：只提示后端返回的错误，避免重复提示
+        ElMessage.error(err.message || '修改失败，请重试');
+        throw err;
       }
-
-
     },
+    
 /*---------------------------注册用户-------------------*/
 // userStore.js 的 register 方法（修改参数传递逻辑）
 async register(userData) {
@@ -125,6 +136,7 @@ async register(userData) {
     const res = await registerApi({
       username: userData.username,
       password: userData.password,
+      confirmPassword: userData.confirmPassword, // 新增：传递确认密码
       role: userData.role,
       nickname: userData.nickname || '', // 后端默认值为“默认用户”，前端可传空
       phone: userData.phone || '' // 后端已校验手机号唯一性，前端可传空
@@ -139,38 +151,75 @@ async register(userData) {
     }
   } catch (err) {
     console.error('注册异常：', err);
-    ElMessage.error(err.message || '注册失败，请重试');
+    //ElMessage.error(err.message || '注册失败，请重试');
     throw err;
   }
 },
 
-// 🌟 新增：手机号重置密码方法（复用 authApi 封装的接口）
-async resetPassword(phone, newPassword) {
-  const now = Date.now();
-  // 1.5秒内重复重置直接拦截（复用去重逻辑）
-  if (now - this.lastOperateTime < this.operateInterval) return false;
-  this.lastOperateTime = now;
+// 🌟 密码重置方法（完整约束版，匹配后端最新逻辑）
+    async resetPassword(resetData) {
+      // 解构参数：包含 confirmNewPassword（与后端接收字段一致）
+      const { phone, code, newPassword, confirmNewPassword } = resetData;
+      const now = Date.now();
+      if (now - this.lastOperateTime < this.operateInterval) return false;
+      this.lastOperateTime = now;
 
-  try {
-    console.log('开始重置密码：', { phone, newPassword: '******' }); // 密码脱敏打印
-    // 调用 authApi 封装的 resetPassword 接口（传递对象格式参数，和 authApi 一致）
-    const res = await resetPasswordApi({ phone, newPassword });
+      // 🌟 前端预校验（按约束规则：特殊字符仅 !@#$%&*()_+.，无空格）
+      const regex = {
+        phone: /^1[3-9]\d{9}$/, // 手机号：11位合法格式
+        password: /^[A-Za-z0-9!@#$%&*()_+.]{6,20}$/, // 新密码：6-20位，指定字符集
+        code:  /^[A-Za-z0-9]{4}$/ // 同步前端逻辑
+      };
 
-    console.log('重置密码接口响应：', res);
-    if (res.success) {
-      ElMessage.success(res.msg || '密码重置成功！请重新登录');
-      // 重置成功后强制退出登录（清除状态，跳登录页）
-      this.logout(); 
-      return true;
-    } else {
-      throw new Error(res.msg || '密码重置失败');
-    }
-  } catch (err) {
-    console.error('重置密码异常：', err);
-    ElMessage.error('密码重置失败：' + err.message);
-    return false;
-  }
-},
+      try {
+        // 1. 必填项校验（后端要求 4 个字段都必填）
+        if (!phone || !code || !newPassword || !confirmNewPassword) {
+          ElMessage.error('手机号、验证码、新密码、确认密码不能为空！');
+          return false;
+        }
 
+        // 2. 手机号格式校验
+        if (!regex.phone.test(phone)) {
+          ElMessage.error('请输入合法的11位手机号！');
+          return false;
+        }
+
+        // 3. 验证码格式校验（4位数字）
+        if (!regex.code.test(code)) {
+          ElMessage.error('验证码为4位大小写字母或数字！');
+          return false;
+        }
+
+        // 4. 新密码格式校验（长度+字符集+无空格）
+        if (!regex.password.test(newPassword)) {
+          ElMessage.error('新密码需6-20位，仅限字母、数字及!@#$%&*()_+.，不能包含空格！');
+          return false;
+        }
+
+        // 5. 确认密码一致性校验
+        if (newPassword !== confirmNewPassword) {
+          ElMessage.error('两次输入的新密码不一致！');
+          return false;
+        }
+
+        // 脱敏打印参数
+        console.log('开始重置密码：', { phone, code, newPassword: '******', confirmNewPassword: '******' });
+        // 调用接口：传递完整参数（包含 confirmNewPassword，与后端匹配）
+        const res = await resetPasswordApi({ phone, code, newPassword, confirmNewPassword });
+
+        console.log('重置密码接口响应：', res);
+        if (res.success) {
+          ElMessage.success(res.msg || '密码重置成功！请重新登录');
+          this.logout(); // 重置成功后强制退出登录
+          return true;
+        } else {
+          throw new Error(res.msg || '密码重置失败');
+        }
+      } catch (err) {
+        console.error('重置密码异常：', err);
+        ElMessage.error('密码重置失败：' + err.message);
+        return false;
+      }
+    },
   }
 });
