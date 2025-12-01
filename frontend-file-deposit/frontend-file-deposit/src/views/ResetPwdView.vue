@@ -61,20 +61,27 @@ export default {
     });
 
     // 处理密码重置
-    const handleResetPwd = async () => {
-      try {
-        await resetPwdFormRef.value.validate();
-        // 调用重置密码接口（仅传手机号和新密码）
-        await userStore.resetPassword({
-          phone: resetPwdForm.value.phone,
-          newPassword: resetPwdForm.value.newPassword
-        });
-        ElMessage.success('密码重置成功！请重新登录');
-        router.push('/login'); // 跳登录页
-      } catch (err) {
-        ElMessage.error(err.message);
-      }
-    };
+const handleResetPwd = async () => {
+  try {
+    // 1. 表单校验（正确，保留）
+    await resetPwdFormRef.value.validate();
+    
+    // 2. 正确调用：传递两个独立参数（phone 和 newPassword），不是对象！
+    const result = await userStore.resetPassword(
+      resetPwdForm.value.phone, // 第一个参数：手机号
+      resetPwdForm.value.newPassword // 第二个参数：新密码
+    );
+
+    // 3. 不需要再弹成功弹窗（userStore 中已经弹了，避免重复）
+    if (result) {
+      // userStore 中已调用 logout() 跳登录页，这里可以省略，或保留冗余保障
+      setTimeout(() => router.push('/login'), 1500);
+    }
+  } catch (err) {
+    // 4. 错误弹窗（保留，捕获表单校验或接口调用的错误）
+    ElMessage.error(err.message || '密码重置失败，请重试');
+  }
+};
 
     // 跳登录页面
     const goToLogin = () => {

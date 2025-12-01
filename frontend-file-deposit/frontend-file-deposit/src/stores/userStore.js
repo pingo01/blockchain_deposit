@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { login as loginApi } from '@/api/authApi';
 import { updateProfile as updateProfileApi } from '@/api/authApi';
 import { register as registerApi } from '@/api/authApi';
+import { resetPassword as resetPasswordApi} from '@/api/authApi';
 import { getToken, setToken, removeToken } from '@/utils/auth';
 import { ElMessage } from 'element-plus';
 import router from '@/router';
@@ -142,5 +143,34 @@ async register(userData) {
     throw err;
   }
 },
+
+// 🌟 新增：手机号重置密码方法（复用 authApi 封装的接口）
+async resetPassword(phone, newPassword) {
+  const now = Date.now();
+  // 1.5秒内重复重置直接拦截（复用去重逻辑）
+  if (now - this.lastOperateTime < this.operateInterval) return false;
+  this.lastOperateTime = now;
+
+  try {
+    console.log('开始重置密码：', { phone, newPassword: '******' }); // 密码脱敏打印
+    // 调用 authApi 封装的 resetPassword 接口（传递对象格式参数，和 authApi 一致）
+    const res = await resetPasswordApi({ phone, newPassword });
+
+    console.log('重置密码接口响应：', res);
+    if (res.success) {
+      ElMessage.success(res.msg || '密码重置成功！请重新登录');
+      // 重置成功后强制退出登录（清除状态，跳登录页）
+      this.logout(); 
+      return true;
+    } else {
+      throw new Error(res.msg || '密码重置失败');
+    }
+  } catch (err) {
+    console.error('重置密码异常：', err);
+    ElMessage.error('密码重置失败：' + err.message);
+    return false;
+  }
+},
+
   }
 });
