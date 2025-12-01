@@ -19,6 +19,7 @@ export const queryFileByName = (fileName) => {
   return request({
     //url: '/uploader/query/name',
     url: '/query/file-name',
+    // url: '/file/queryByFileName',
     method: 'get',
     params: {  fileName  }
   });
@@ -32,7 +33,12 @@ export const queryFileById = (depositId) => {
   return request({
     //url: '/uploader/query/id',
     url: '/query/deposit-id',
+    //url: '/file/queryByDepositId', 
     method: 'get',
-    params: { depositId }
+    params: { depositId },
+    // 🔥 核心补充：携带登录Token（和文件列表/按名查询一致，后端 verifyLogin 需验证）
+    headers: {
+      'Authorization': `Bearer ${localStorage.getItem('token')}`
+    }
   });
 };

@@ -108,36 +108,62 @@ const getUserFileList = async (req, res) => {
 
 
 // 按存证编号查询（修改后）
-const queryByDepositId = (req, res) => {
+const queryFileById = (req, res) => {
   try {
     const { depositId } = req.query;
     const userId = req.user.userId;
     const username = req.user.username; // 直接读取当前登录用户名
 
+
+    // 日志1：打印后端接收的参数（确认前端传的存证ID和用户ID是否正确）
+    console.log('【后端-按ID查询】接收参数：', {
+      前端传的depositId: depositId,
+      当前用户ID: userId,
+      当前用户名: username
+    });
+
+
     if (!depositId) {
+      console.log('【后端-按ID查询】存证ID为空，返回400');
       return res.status(400).json({ success: false, msg: '存证ID不能为空' });
     }
 
     const result = blockchainService.queryDepositByDepositId(depositId);
+    // 日志2：打印区块链服务的查询结果（确认后端是否查到数据）
+    console.log('【后端-按ID查询】区块链服务查询结果：', {
+      成功与否: result.success,
+      查到的数据: result.success ? result.data : '无',
+      错误信息: result.msg || '无'
+    });
+
     if (result.success) {
+       // 日志3：验证用户权限（确认查到的数据是否属于当前用户）
+      console.log('【后端-按ID查询】权限校验：', {
+        查到数据的用户ID: result.data.depositRecord.userId,
+        当前登录用户ID: userId,
+        是否有权限: result.data.depositRecord.userId === userId
+      });
       if (result.data.depositRecord.userId === userId) {
+        console.log('【后端-按ID查询】查询成功，返回数据给前端');
         return res.status(200).json({ success: true, data: result.data });
       } else {
-        // 🔥 替换为用户名：优化无权限提示
+        // 替换为用户名：优化无权限提示
+        console.log('【后端-按ID查询】无权限，返回403');
         return res.status(403).json({ 
           success: false, 
           msg: `无权限查询他人存证记录（当前用户：${username}）` 
         });
       }
     } else {
-      // 🔥 替换为用户名：未查询到记录（覆盖区块链服务的默认提示）
+      console.log('【后端-按ID查询】未查到数据，返回404');
+      // 替换为用户名：未查询到记录（覆盖区块链服务的默认提示）
       return res.status(404).json({ 
         success: false, 
         msg: `未查询到用户${username}名下该存证编号的记录` 
       });
     }
   } catch (err) {
-    console.error('按存证ID查询失败：', err);
+    console.error('【后端-按ID查询】查询异常：', err);
     return res.status(500).json({ success: false, msg: '查询失败，请重试' });
   }
 };
@@ -203,6 +229,6 @@ const queryByFileName = (req, res) => {
 
 module.exports = {
   getUserFileList,
-  queryByDepositId,
+  queryFileById,
   queryByFileName
 };

@@ -65,7 +65,7 @@ export default {
     // 表单校验规则
     const profileRules = ref({
       nickname: [{ required: true, message: '请输入昵称', trigger: 'blur' }],
-      phone: [{ pattern: /^1[3-9]\d{9}$/, message: '请输入合法手机号', trigger: 'blur' }]
+      phone: [{required: true, pattern: /^1[3-9]\d{9}$/, message: '请输入合法手机号', trigger: 'blur' }]
     });
 
     // 页面加载时，初始化表单数据（从 Pinia 获取）
@@ -83,7 +83,7 @@ export default {
           nickname: profileForm.value.nickname,
           phone: profileForm.value.phone
         });
-        ElMessage.success('个人信息修改成功！');
+        //ElMessage.success('个人信息修改成功！');
       } catch (err) {
         ElMessage.error(err.message);
       }

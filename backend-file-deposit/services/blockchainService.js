@@ -142,6 +142,11 @@ class BlockchainService {
       const blockData = block.data;
       // 排除创世区块（创世区块数据不是存证记录）
       if (blockData.fileHash && blockData.fileHash === fileHash) {
+         console.log(`📋 存证ID ${depositId} 对应的原始数据：`, {
+        原始文件名: blockData.fileName,
+        原始哈希值: blockData.fileHash,
+        哈希长度: blockData.fileHash.length
+      });
         return {
           success: true,
           data: {
@@ -222,20 +227,20 @@ queryDepositByDepositId(depositId) {
 
 
 
-  // 10. 核心功能：验证文件是否被篡改（对比哈希值）
-  verifyFileIntegrity(fileHash) {
-    // ① 查询存证记录
-    const queryResult = this.queryDepositByFileHash(fileHash);
-    if (!queryResult.success) {
-      return {
-        success: false,
-        msg: '未查询到该文件的存证记录，无法验证'
-      };
-    }
-
-    // ② 验证区块链完整性（确保存证记录未被篡改）
+ // 10. 核心功能：验证文件是否被篡改（对比哈希值）- 修正版
+verifyFileIntegrity(depositId, verifyHash) {
+  try {
+    console.log('\n-----------------------------------------------------');
+    console.log('🔗 区块链服务 - 开始文件验证：');
+    console.log('存证ID：', depositId);
+    console.log('待验证哈希：', verifyHash);
+    console.log('-----------------------------------------------------');
+    // ① 先验证区块链本身是否完整（避免存证记录被篡改）
+    console.log('🔍 区块链服务 - 验证区块链本身完整性...');
     const chainVerifyResult = this.verifyChainIntegrity();
+    console.log('🔍 区块链服务 - 区块链完整性验证结果：', chainVerifyResult);
     if (!chainVerifyResult.isIntegrity) {
+      console.error('❌ 区块链服务 - 区块链不完整：', chainVerifyResult.msg);
       return {
         success: false,
         msg: `文件验证失败：${chainVerifyResult.msg}`,
@@ -243,12 +248,59 @@ queryDepositByDepositId(depositId) {
       };
     }
 
-    // ③ 验证通过（存证记录存在且区块链完整 → 文件未被篡改）
+    // ② 按存证ID查询原始存证记录（关键：用存证ID精准查询）
+    console.log('🔍 区块链服务 - 按存证ID查询存证记录：', depositId);
+    const depositResult = this.queryDepositByDepositId(depositId);
+    console.log('🔍 区块链服务 - 存证记录查询结果：', depositResult);
+    if (!depositResult.success) {
+      console.error('❌ 区块链服务 - 未查询到存证记录：', depositResult.msg);
+      return {
+        success: false,
+        msg: `未查询到存证ID为 ${depositId} 的记录，无法验证`,
+        tampered: false // 不是篡改，是存证ID无效
+      };
+    }
+
+    // ③ 提取原始文件哈希（存证时存储的哈希值）
+    const originalHash = depositResult.data.depositRecord.fileHash;
+    console.log('🔍 区块链服务 - 对比哈希：');
+    console.log('   原始哈希（存证时）：', originalHash);
+    console.log('   待验证哈希（用户上传）：', verifyHash);
+    console.log('   对比结果：', originalHash.toLowerCase() === verifyHash.toLowerCase() ? '一致' : '不一致');
+    console.log(`【区块链服务】原始哈希：${originalHash}，待验证哈希：${verifyHash}`);
+
+    // ④ 对比原始哈希和待验证哈希（忽略大小写，避免格式问题）
+    if (originalHash.toLowerCase() === verifyHash.toLowerCase()) {
+      console.log('✅ 区块链服务 - 验证成功：文件未被篡改');
+      // 哈希一致：文件未被篡改
+      return {
+        success: true,
+        msg: '文件未被篡改，存证记录有效！',
+        tampered: false,
+        originalHash: originalHash,
+        data: depositResult.data.depositRecord
+      };
+    } else {
+      console.error('❌ 区块链服务 - 验证失败：文件已被篡改');
+      // 哈希不一致：文件已被篡改
+      return {
+        success: false,
+        msg: '文件已被篡改！原始哈希与待验证哈希不一致',
+        tampered: true,
+        originalHash: originalHash,
+        verifyHash: verifyHash
+      };
+    }
+  } catch (error) {
+    console.error('❌ 区块链服务 - 验证异常：', error);
+    console.error('异常堆栈：', error.stack);
+    console.error('【区块链服务】文件验证异常：', error);
     return {
-      success: true,
-      msg: '文件未被篡改，存证记录有效！',
-      data: queryResult.data.depositRecord
-    };
+      success: false,
+      msg: '文件验证异常，请重试',
+      tampered: false
+      };
+    }
   }
 }
 

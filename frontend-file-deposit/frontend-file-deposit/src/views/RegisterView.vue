@@ -57,7 +57,8 @@ export default {
       username: [{ required: true, message: '请输入用户名', trigger: 'blur' }, { min: 3, message: '用户名长度至少3位', trigger: 'blur' },{ pattern: /^(?!1[3-9]\d{9}$).+$/, message: '用户名不能是11位手机号', trigger: 'blur' }],
       password: [{ required: true, message: '请输入密码', trigger: 'blur' }, { min: 6, message: '密码长度至少6位', trigger: 'blur' }],
       role: [{ required: true, message: '请选择角色', trigger: 'change' }],
-      phone: [{ pattern: /^1[3-9]\d{9}$/, message: '请输入合法手机号', trigger: 'blur' }]
+      nickname: [{  message: '请输入昵称', trigger: 'blur' }],
+      phone: [ { required: true, message: '请输入手机号', trigger: 'blur' },{ pattern: /^1[3-9]\d{9}$/, message: '请输入合法手机号', trigger: 'blur' }]
     });
 
     // 处理注册

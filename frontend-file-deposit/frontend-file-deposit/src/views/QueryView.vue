@@ -82,7 +82,6 @@
             <el-table-column label="区块哈希" prop="blockHash" align="center" min-width="280" /> <!-- 新增 -->
             <el-table-column label="前一区块哈希" prop="prevBlockHash" align="center" min-width="280" /> <!-- 新增 -->
             <el-table-column label="操作" align="center">
-              
               <template #default="scope">
                 <el-button type="text" @click="viewDetail(scope.row)">查看详情</el-button>
               </template>
@@ -105,16 +104,35 @@
         <div v-if="idQueryResult.show" class="result-card">
           <el-divider content="查询结果" />
           <div v-if="idQueryResult.data" class="detail-card">
-            <el-descriptions title="文件存证详情" :column="2" border>
-              <el-descriptions-item label="存证ID" :content="idQueryResult.data.depositId" />
-              <el-descriptions-item label="文件名" :content="idQueryResult.data.fileName" />
-              <el-descriptions-item label="文件类型" :content="idQueryResult.data.fileType" />
-              <el-descriptions-item label="文件大小(KB)" :content="idQueryResult.data.fileSize" />
-              <el-descriptions-item label="文件哈希" :content="idQueryResult.data.fileHash" />
-              <el-descriptions-item label="存证时间" :content="formatTime(idQueryResult.data.depositTime)" />
-              <el-descriptions-item label="区块索引" :content="idQueryResult.data.blockIndex" />
-              <el-descriptions-item label="区块哈希" :content="idQueryResult.data.blockHash" />
-              <el-descriptions-item label="前一区块哈希" :content="idQueryResult.data.prevBlockHash" /> <!-- 新增 -->
+            <!-- 修复：用插槽渲染，替代 content 属性 -->
+            <el-descriptions :column="2" border>
+              <el-descriptions-item label="存证ID">
+                {{ idQueryResult.data.depositId }}
+              </el-descriptions-item>
+              <el-descriptions-item label="文件名">
+                {{ idQueryResult.data.fileName }}
+              </el-descriptions-item>
+              <el-descriptions-item label="文件类型">
+                {{ idQueryResult.data.fileType }}
+              </el-descriptions-item>
+              <el-descriptions-item label="文件大小(KB)">
+                {{ idQueryResult.data.fileSize }}
+              </el-descriptions-item>
+              <el-descriptions-item label="文件哈希">
+                {{ idQueryResult.data.fileHash }}
+              </el-descriptions-item>
+              <el-descriptions-item label="存证时间">
+                {{ formatTime(idQueryResult.data.depositTime) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="区块索引">
+                {{ idQueryResult.data.blockIndex }}
+              </el-descriptions-item>
+              <el-descriptions-item label="区块哈希">
+                {{ idQueryResult.data.blockHash }}
+              </el-descriptions-item>
+              <el-descriptions-item label="前一区块哈希">
+                {{ idQueryResult.data.prevBlockHash }}
+              </el-descriptions-item>
             </el-descriptions>
           </div>
           <div v-else class="empty-result">
@@ -229,28 +247,76 @@ export default {
       }
     };
 
-    // 按存证ID查询
-    const queryById = async () => {
-      if (!queryForm.value.depositId.trim()) {
-        ElMessage.warning('请输入存证ID');
-        return;
-      }
-      isLoading.value = true;
-      try {
-        const res = await queryFileById(queryForm.value.depositId.trim());
-        idQueryResult.value = {
-          show: true,
-          data: res.success ? res.data : null
-        };
-      } catch (err) {
-        idQueryResult.value = { show: true, data: null };
-        ElMessage.error('查询失败，请重试');
-        console.error(err);
-      } finally {
-        isLoading.value = false;
-      }
-    };
+    // 🔥 重点修改：按存证ID查询（适配后端嵌套格式）
+    // 按存证ID查询（已添加完整日志，直接替换）
+const queryById = async () => {
+  // 1. 校验输入，打印日志
+  if (!queryForm.value.depositId.trim()) {
+    console.log('❌ 前端查询：未输入存证ID，提示用户');
+    ElMessage.warning('请输入存证ID');
+    return;
+  }
+  isLoading.value = true;
 
+  try {
+    // 2. 打印输入的存证ID（确认传参正确）
+    const inputDepositId = queryForm.value.depositId.trim();
+    console.log('✅ 前端查询：输入的存证ID =', inputDepositId);
+
+    // 3. 调用接口，打印请求发送状态
+    console.log('🔄 前端查询：正在发送请求到后端...');
+    const res = await queryFileById(inputDepositId);
+
+    // 4. 打印后端返回的完整响应（最关键！确认是否收到数据）
+    console.log('✅ 前端查询：收到后端响应 =', res);
+    console.log('✅ 后端响应 success =', res.success);
+    console.log('✅ 后端响应 data =', res.data);
+
+    // 5. 处理成功响应
+    if (res.success && res.data) {
+      // 打印嵌套字段是否存在（避免字段缺失）
+      console.log('✅ 后端 data 中 depositRecord =', res.data.depositRecord);
+      console.log('✅ 后端 data 中 blockInfo =', res.data.blockInfo);
+
+      // 格式转换（和之前一致，加日志）
+      const flatData = {
+        depositId: res.data.depositRecord.id,
+        fileName: res.data.depositRecord.fileName,
+        fileType: res.data.depositRecord.fileType,
+        fileSize: res.data.depositRecord.fileSize,
+        fileHash: res.data.depositRecord.fileHash,
+        depositTime: res.data.depositRecord.depositTime,
+        blockIndex: res.data.blockInfo.index,
+        blockHash: res.data.blockInfo.blockHash,
+        prevBlockHash: res.data.blockInfo.prevBlockHash
+      };
+      console.log('✅ 格式转换完成：flatData =', flatData);
+
+      // 赋值给渲染变量，打印最终结果
+      idQueryResult.value = {
+        show: true,
+        data: flatData
+      };
+      console.log('✅ 渲染数据赋值完成：idQueryResult =', idQueryResult.value);
+
+    } else {
+      // 6. 处理后端返回的失败（如未查到数据）
+      console.log('❌ 前端查询：后端返回失败，msg =', res.msg);
+      idQueryResult.value = { show: true, data: null };
+      ElMessage.warning('未查询到该存证ID的记录');
+    }
+
+  } catch (err) {
+    // 7. 捕获前端异常（如接口报错、网络问题）
+    console.error('❌ 前端查询：发生异常 =', err);
+    console.error('❌ 异常详情：', err.message, err.stack);
+    idQueryResult.value = { show: true, data: null };
+    ElMessage.error('查询失败，请重试');
+  } finally {
+    isLoading.value = false;
+    console.log('🔚 前端查询：流程结束');
+  }
+};
     // 查看文件详情
     const viewDetail = (row) => {
       queryForm.value.depositId = row.depositId;

@@ -15,7 +15,7 @@ router.get(
   '/deposit-id', // 路径简化：原 /query/deposit-id → 现在路由挂载后是 /api/query/deposit-id
   verifyLogin,
   verifyUploader,
-  queryController.queryByDepositId
+  queryController.queryFileById
 );
 
 // 3. 按文件名查询（需登录 + 上传者角色）

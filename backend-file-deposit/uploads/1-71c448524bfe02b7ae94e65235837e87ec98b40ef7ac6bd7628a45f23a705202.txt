@@ -1,0 +1,201 @@
+#define MAXSIZE 100
+#include <fstream>
+#include <iostream>
+#include <cstring>
+
+using namespace std;
+
+// 构造分析栈
+struct Stack {
+    char data;
+    Stack *next;
+};
+Stack stack, *pstack = &stack;
+
+
+// 全局栈初始化
+void initParseStack() {
+    pstack->next = NULL;  // 栈顶指针置空，初始化空栈
+}
+
+
+
+/**
+ * 压栈函数
+ * @param data 要压入的数据
+ */
+void push(char data) {
+    Stack *temp = (Stack *) malloc(sizeof(Stack));
+    temp->data = data;
+    temp->next = pstack->next;
+    pstack->next = temp;
+}
+
+/**
+ * 弹栈函数
+ * @return 弹栈字符，栈空返回'\0'（避免返回NULL导致char类型兼容问题）
+ */
+char pop() {
+    Stack *temp;
+    temp = pstack->next;
+    if (!temp) {
+        return '\0';  // 改为返回'\0'，避免char类型接收NULL
+    }
+    pstack->next = temp->next;
+    char a = temp->data;
+    free(temp);
+    return a;
+}
+
+/**
+ * 输出栈内容（控制台，栈底→栈顶顺序，如：# E）
+ * @return 内容字符串指针
+ */
+char* PRINT_STACK() {
+    char tmp[MAXSIZE]={0}; // 临时输出字符串数组
+    Stack *temp = pstack->next;  // 从栈顶开始遍历
+    char stackArr[MAXSIZE];      // 临时存储栈元素（栈顶→栈底）
+    int arrLen = 0;
+
+    // 第一步：收集栈元素（栈顶→栈底）
+    while (temp != NULL && arrLen < MAXSIZE - 1) {
+        stackArr[arrLen++] = temp->data;
+        temp = temp->next;
+    }
+
+    // 第二步：逆序打印（栈顶→栈底 转 栈底→栈顶）
+    printf("栈: ");
+    int offset = 0;
+    for (int i = arrLen - 1; i >= 0; i--) {
+        offset += sprintf(tmp + offset, "%c ", stackArr[i]);
+    }
+    printf("%s\n", tmp);
+    return tmp;
+}
+
+/**
+ * 输出栈的内容到文件中（栈底→栈顶顺序，如：# E）
+ * @param output 文件输出流
+ * @return
+ */
+char* PRINT_STACK(ofstream &output) {
+    char tmp[MAXSIZE] = {0};
+    Stack *temp = pstack->next;  // 从栈顶开始遍历
+    char stackArr[MAXSIZE];      // 临时存储栈元素（栈顶→栈底）
+    int arrLen = 0;
+
+    // 第一步：收集栈元素（栈顶→栈底）
+    while (temp != NULL && arrLen < MAXSIZE - 1) {
+        stackArr[arrLen++] = temp->data;
+        temp = temp->next;
+    }
+
+    // 第二步：逆序输出（栈底→栈顶）
+    printf("栈: ");
+    int offset = 0;
+    for (int i = arrLen - 1; i >= 0; i--) {
+        offset += sprintf(tmp + offset, "%c ", stackArr[i]);
+    }
+    output << "栈: " << tmp << endl;
+    printf("%s\n", tmp);
+    return tmp;
+}
+
+// 括号检查专用函数（避免与全局栈冲突）
+// 检查括号是否匹配
+// ----------------------------------
+Stack check, *pcheck = &check;
+void pushCheck(Stack *top, char data){
+    Stack *p = (Stack *) malloc(sizeof (struct Stack));
+    p->data = data;
+    p->next = top->next;
+    top->next = p;
+}
+
+char popCheck(Stack *top){
+    Stack *p;
+    p = top->next;
+    top->next =p->next;
+    char a = p->data;
+    free(p);
+    return a;
+}
+
+/**
+ * 检查括号是否匹配
+ * @param string 输入串
+ * @return 匹配返回1，不匹配返回0
+ */
+int checkBracket(char *string){
+    Stack *left = (Stack*) malloc(sizeof(struct Stack));
+    left->next = NULL;  // 初始化栈顶指针为空（关键）
+    int i = 0;
+    int f = 1;
+    while (string[i] !='\0'){// 遍历到字符串结束符为止
+        if (string[i] == ' ') {// 跳过空格
+            i++;
+            continue;
+        }
+        char tmp;
+        switch (string[i++]) {
+            case '(':
+                pushCheck(left,'(');
+                break;
+            case '[':
+                pushCheck(left,'[');
+                break;
+            case '{':
+                pushCheck(left,'{');
+                break;
+            case ')':
+                if (left->next == NULL){
+                    f = 0;
+                    break;
+                }
+                tmp = popCheck(left);
+                if (tmp != '('){
+                    f = 0;
+                }
+                break;
+            case ']':
+                if (left->next == NULL){
+                    f = 0;
+                    break;
+                }
+                tmp = popCheck(left);
+                if (tmp != '['){
+                    f = 0;
+                }
+                break;
+            case '}':
+                if (left->next == NULL){
+                    f = 0;
+                    break;
+                }
+                tmp = popCheck(left);
+                if (tmp != '{') {
+                    f = 0;
+                }
+                break;
+            default:
+                break;
+        }
+        if (!f) break;  // 出错提前退出，避免无效遍历
+    }
+    // 释放括号栈内存（避免泄漏）
+    while (left->next != NULL) {
+        popCheck(left);
+    }
+    free(left);
+    return f;
+}
+
+// 全局栈释放
+void freeParseStack() {
+    while (pstack->next != NULL) {
+        pop();  // 利用现有pop()释放节点
+    }
+}
+
+
+
