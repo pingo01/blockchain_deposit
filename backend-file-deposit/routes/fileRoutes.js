@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router(); // 创建路由实例
 const fileController = require('../controllers/fileController');
-// 🔥 引入公共中间件（替代 fileController 里的重复中间件）
+// 引入公共中间件（替代 fileController 里的重复中间件）
 const { verifyLogin, verifyUploader } = require('../middleware/roleAuth');
 
 // 文件上传接口：POST /api/file/upload
@@ -14,5 +14,12 @@ router.post(
   fileController.uploadFile            // 核心逻辑：上传+哈希生成
 );
 
+// 🔴 新增：导出存证凭证路由
+// 接口路径：GET /api/file/export-voucher?depositId=xxx
+router.get(
+  '/export-voucher',
+  verifyLogin, // 必须登录才能导出（和上传接口一致的校验）
+  fileController.exportVoucher // 调用新增的导出逻辑
+);
 
 module.exports = router; // 导出路由，供入口文件注册

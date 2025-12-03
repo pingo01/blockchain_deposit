@@ -41,14 +41,19 @@
             <el-table-column label="区块索引" prop="blockIndex" align="center" width="120" /> <!-- 新增 -->
             <el-table-column label="区块哈希" prop="blockHash" align="center" min-width="280" /> <!-- 新增 -->
             <el-table-column label="前一区块哈希" prop="prevBlockHash" align="center" min-width="280" /> <!-- 新增 -->
-            <el-table-column label="操作" align="center" width="120">
+            <!-- 🔴 修改：操作列新增「导出凭证」按钮 -->
+            <el-table-column label="操作" align="center" width="200"> <!-- 加宽操作列（容纳两个按钮） -->
               <template #default="scope">
                 <el-button type="text" @click="viewDetail(scope.row)">查看详情</el-button>
+                <el-button type="text" icon="el-icon-download" @click="exportVoucher(scope.row.depositId)" class="export-btn">
+                  导出凭证
+                </el-button>
               </template>
             </el-table-column>
           </el-table>
         </div>
       </el-tab-pane>
+
 
       <!-- 按文件名查询 -->
       <el-tab-pane label="按文件名查询" name="queryByName">
@@ -154,6 +159,8 @@ import {
   queryFileByName, 
   queryFileById 
 } from '@/api/queryApi';
+// 🔴 新增：导入导出凭证API
+import { exportVoucher as exportVoucherApi } from '@/api/fileApi';
 import { isLogin } from '@/utils/auth';
 
 export default {
@@ -199,6 +206,35 @@ export default {
     hour: '2-digit', minute: '2-digit', second: '2-digit'
   });
 };
+
+// 🔴 新增：导出存证凭证方法
+    const exportVoucher = async (depositId) => {
+      try {
+        if (!depositId) {
+          ElMessage.warning('存证ID无效，无法导出');
+          return;
+        }
+        // 调用后端导出接口（传存证ID）
+        const response = await exportVoucherApi(depositId);
+
+        // 处理下载（从响应头获取文件名，或自定义）
+        const fileName = `存证凭证_${depositId}.pdf`;
+        const blob = new Blob([response.data], { type: 'application/pdf' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        // 清理资源
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        ElMessage.success('存证凭证导出成功！');
+      } catch (err) {
+        ElMessage.error('导出失败：' + (err.message || '服务器异常'));
+        console.error('导出凭证失败：', err);
+      }
+    };
 
     // 页面加载时获取文件列表
     onMounted(() => {
@@ -335,7 +371,8 @@ const queryById = async () => {
       queryByFileName,
       queryById,
       viewDetail,
-      formatTime // 导出时间格式化函数
+      formatTime, // 导出时间格式化函数
+      exportVoucher // 🔴 导出新增方法
     };
   }
 };
@@ -421,6 +458,12 @@ const queryById = async () => {
 
 .detail-card {
   margin-top: 10px;
+}
+
+/* 🔴 新增：导出按钮样式（可选，优化间距） */
+.export-btn {
+  color: #38b2ac !important; /* 自定义导出按钮颜色 */
+  margin-left: 16px;
 }
 
 /* 适配哈希值列的换行问题 */

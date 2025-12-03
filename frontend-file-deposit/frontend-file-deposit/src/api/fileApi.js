@@ -27,6 +27,11 @@ service.interceptors.request.use(
 service.interceptors.response.use(
   (response) => {
     const res = response.data;
+    // 🔴 关键修改：导出凭证接口返回的是 PDF blob 流，不是 JSON，需要特殊处理！
+    // 判断响应类型，如果是 blob，直接返回 response（不解析 data）
+    if (response.config.responseType === 'blob') {
+      return response; // 保留 blob 流，供前端处理下载
+    }
     if (!res.success) {
       // 后端返回失败（如格式错误、权限不足），抛出错误提示
       return Promise.reject(new Error(res.msg || '请求失败'));
@@ -53,5 +58,16 @@ export const uploadFile = (file) => {
     method: 'POST',
     data: formData,
     headers: { 'Content-Type': 'multipart/form-data' } // 上传文件必须的请求头
+  });
+};
+
+// 🔴 新增：导出存证凭证接口
+export const exportVoucher = (depositId) => {
+  return service({
+    url: '/file/export-voucher', // 后端导出接口路径（完整地址：/api/file/export-voucher）
+    method: 'get',
+    params: { depositId }, // 传递存证ID（后端接口接收的参数名）
+    responseType: 'blob', // 关键：告诉 axios 响应是 blob 流（PDF文件）
+    // 无需额外加 headers：请求拦截器已自动携带 Token，Content-Type 后端会处理
   });
 };

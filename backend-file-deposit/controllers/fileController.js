@@ -1,3 +1,5 @@
+// 🔴 必须放在 fileController.js 最顶部！
+const PDFDocument = require('pdfkit'); // 新增这行，确保能找到 PDFDocument
 // 引入依赖和配置
 const multer = require('multer');
 const sha256 = require('sha256-file');
@@ -248,7 +250,117 @@ while (retryCount < maxRetry && !blockchainSuccess) {
   }
 };
 
+// ---------------- 🔴 新增：导出存证凭证PDF逻辑（添加到文件末尾）----------------
+const exportVoucher = async (req, res) => {
+  try {
+    // 1. 获取前端传递的存证ID（从query参数中取）
+    const { depositId } = req.query;
+    if (!depositId) {
+      return res.status(400).json({ success: false, msg: '存证ID不能为空' });
+    }
+    console.log('=== 开始生成存证凭证 ===');
+    console.log('存证ID：', depositId);
+
+    // 2. 调用区块链服务查询存证记录（复用你已有的查询方法）
+    // 注意：如果你的查询方法名不是 queryDepositByDepositId，替换成实际的！
+    const queryResult = await blockchainService.queryDepositByDepositId(depositId);
+    
+    // 校验查询结果（确保有存证记录和区块信息）
+    if (!queryResult.success) {
+      console.log('未找到存证记录：', queryResult.msg);
+      return res.status(404).json({ success: false, msg: queryResult.msg || '未找到该存证记录' });
+    }
+    const { depositRecord, blockInfo } = queryResult.data;
+    if (!depositRecord || !blockInfo) {
+      console.log('存证记录或区块信息缺失');
+      return res.status(404).json({ success: false, msg: '存证记录不完整' });
+    }
+
+    // 3. 创建PDF文档（基础配置）
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: 50,
+      title: `存证凭证_${depositId}`
+    });
+
+    // 4. 解决中文显示问题（关键步骤）
+    // 按之前的说明：在后端根目录创建 fonts 文件夹，放入 SimHei.ttf 字体文件
+    const fontPath = path.join(__dirname, '../fonts/SimHei.ttf');
+    if (fs.existsSync(fontPath)) {
+      doc.font(fontPath); // 加载中文字体
+      console.log('成功加载中文字体：', fontPath);
+    } else {
+      console.warn('未找到中文字体文件，中文可能显示为方框！请按步骤添加 SimHei.ttf');
+    }
+
+    // 5. 设置响应头（告诉前端下载PDF）
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="deposit_certificate_${depositId}.pdf"`);
+    res.setHeader('Cache-Control', 'no-cache');
+    doc.pipe(res); // PDF流直接写入响应
+
+    // 6. 生成PDF内容（按你的数据字段调整，确保字段名匹配）
+    // 标题
+    doc.fontSize(24)
+       .text('数字资产存证凭证', { align: 'center', bold: true })
+       .moveDown(2);
+    doc.fontSize(14)
+       .text('FILE DEPOSIT CERTIFICATE', { align: 'center', color: '#666' })
+       .moveDown(3);
+
+    // 一、存证基本信息（字段名和你的 depositRecord 对应）
+    doc.fontSize(16)
+       .text('一、存证基本信息', { underline: true, bold: true })
+       .moveDown(1.5);
+    doc.fontSize(12)
+       .text(`存证ID：${depositRecord.id}`) // 你的存证ID字段
+       .text(`文件名称：${depositRecord.fileName}`) // 文件名
+       .text(`文件类型：${depositRecord.fileType || '未知'}`) // 文件类型
+       .text(`文件大小：${depositRecord.fileSize ? (depositRecord.fileSize / 1024).toFixed(2) + ' KB' : '未知'}`) // 大小
+       .text(`SHA256哈希值：${depositRecord.sha256Hash || depositRecord.fileHash}`) // 哈希值（两种字段名兼容）
+       .text(`存证时间：${depositRecord.depositTime ? new Date(depositRecord.depositTime).toLocaleString() : '未知'}`) // 存证时间
+       //.text(`存证描述：${depositRecord.depositDesc || '无'}`) // 存证描述（如果有）
+       .moveDown(2);
+
+    // 二、区块链存证信息（字段名和你的 blockInfo 对应）
+    doc.fontSize(16)
+       .text('二、区块链存证信息', { underline: true, bold: true })
+       .moveDown(1.5);
+    doc.fontSize(12)
+       .text(`区块索引：${blockInfo.index}`) // 区块索引
+       .text(`区块哈希：${blockInfo.blockHash}`) // 区块哈希
+       .text(`前一区块哈希：${blockInfo.prevBlockHash || '无（创世区块）'}`) // 前区块哈希
+       .text(`区块时间戳：${blockInfo.timestamp ? new Date(blockInfo.timestamp).toLocaleString() : '未知'}`) // 时间戳
+       .moveDown(3);
+
+    // 三、存证声明
+    doc.fontSize(16)
+       .text('三、存证声明', { underline: true, bold: true })
+       .moveDown(1.5);
+    doc.fontSize(10)
+       .text('1. 本凭证基于区块链技术生成，存证信息不可篡改、不可删除；', { indent: 20 })
+       .text('2. 哈希值可作为文件完整性校验的唯一依据；', { indent: 20 })
+       .text('3. 本凭证可作为电子证据参考，具备法律效力；', { indent: 20 })
+       .text('4. 可通过存证ID在平台查询核验真实性。', { indent: 20 })
+       .moveDown(4);
+
+    // 页脚
+    doc.fontSize(9)
+       .text('生成时间：' + new Date().toLocaleString(), { align: 'center', color: '#999' })
+       .text('数字存证平台 @ 2025', { align: 'center', color: '#999' });
+
+    // 7. 结束PDF生成（必须调用）
+    doc.end();
+    console.log('PDF凭证生成完成，已返回前端');
+
+  } catch (err) {
+    console.error('生成存证凭证失败：', err.stack);
+    res.status(500).json({ success: false, msg: '生成凭证失败：' + err.message });
+  }
+};
+
 module.exports = {
   upload, // multer 上传对象
-  uploadFile // 核心上传逻辑
+  uploadFile, // 核心上传逻辑
+  exportVoucher // 新增：导出凭证逻辑
 };
