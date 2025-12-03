@@ -54,6 +54,20 @@
 
     <!-- 验证结果展示 -->
     <div v-if="verifyResult.visible" class="result-card">
+          <!--  新增：导出验证报告按钮 -->
+      <div class="export-btn-container">
+        <el-button 
+          type="success" 
+          icon="Download" 
+          @click="exportVerifyReport"
+          :disabled="isVerifying || isExporting"
+          class="export-btn"
+        >
+          <el-icon v-if="isExporting" class="loading-icon"><Loading /></el-icon>
+          {{ isExporting ? '生成报告中...' : '导出验证报告' }}
+        </el-button>
+      </div>
+
       <el-divider content="验证结果" />
       <div class="result-content">
         <!-- 验证状态（成功/失败） -->
@@ -80,9 +94,16 @@
           <p class="success-tip">✅ 哈希值完全匹配，文件内容未被修改，存证信息真实有效</p>
         </div>
 
-        <!-- 验证失败：展示失败原因 -->
-        <div v-if="!verifyResult.success" class="fail-detail">
+
+        <!-- 🔴 新增：验证失败也展示详细信息（含区块索引） -->
+        <div v-if="!verifyResult.success && verifyResult.data" class="fail-detail">
           <p class="fail-reason">❌ 失败原因：{{ verifyResult.msg || '待验证文件哈希与存证哈希不匹配，或存证ID不存在/已失效' }}</p>
+          <el-descriptions title="存证关联信息（供核对）" :column="2" border class="fixed-table" style="margin-top: 15px;">
+            <el-descriptions-item label="存证ID">{{ verifyResult.data.depositId || '暂未记录'}}</el-descriptions-item>
+            <el-descriptions-item label="原始文件名">{{ verifyResult.data.fileName || '暂未记录'}}</el-descriptions-item>
+            <el-descriptions-item label="原始文件哈希（SHA256）">{{ verifyResult.data.fileHash || '暂未记录'}}</el-descriptions-item>
+            <el-descriptions-item label="区块索引">{{ verifyResult.data.blockIndex || '暂未记录'}}</el-descriptions-item>
+          </el-descriptions>
         </div>
       </div>
     </div>
@@ -90,15 +111,16 @@
 </template>
 
 <script>
-import { ref } from 'vue';
+import { ref, watch } from 'vue'; // 🔴 新增：导入 watch 监听存证ID变化
 import { ElMessage, ElIcon, ElLoading } from 'element-plus';
 import { Check, Close, Loading } from '@element-plus/icons-vue';
 import { useRouter } from 'vue-router';
+import axios from 'axios';
 // 导入API和工具函数
 import { verifyFileByDepositId } from '@/api/verifyApi'; // 验证接口（存证ID+文件哈希）
 import { calculateFileSHA256 } from '@/utils/fileHash'; // 计算文件SHA256哈希
 import { isLogin, getToken } from '@/utils/auth';
-import service from '@/utils/request'; // 导入request实例，用于打印完整URL
+//import service from '@/utils/request'; // 导入request实例，用于打印完整URL
 
 export default {
   name: 'VerifyView',
@@ -106,6 +128,7 @@ export default {
   setup() {
     const router = useRouter();
     const isVerifying = ref(false); // 验证中状态
+    const isExporting = ref(false); //  新增：导出中状态
     const fileList = ref([]); // 待验证文件列表
     const currentFileHash = ref(''); // 待验证文件的哈希值
 
@@ -118,11 +141,11 @@ export default {
     const verifyResult = ref({
       visible: false, // 是否显示结果
       success: false, // 成功/失败
-      data: null, // 验证成功的存证数据
+      data: {}, // 🔴 修改：默认值改为空对象，避免 undefined // 验证成功的存证数据
       msg: '' // 失败原因
     });
 
-    // 🌟 新增：时间格式化方法（解决时间格式怪异问题）
+    //  新增：时间格式化方法（解决时间格式怪异问题）
     const formatTime = (time) => {
       if (!time) return '';
       const date = new Date(time);
@@ -140,6 +163,28 @@ export default {
       });
     };
 
+    //  新增：重置验证结果（复用逻辑）
+    const resetVerifyResult = () => {
+      verifyResult.value = {
+        visible: false,
+        success: false,
+        data: null,
+        msg: ''
+      };
+      console.log('🔄 已重置旧验证结果');
+    };
+
+    //  新增：监听存证ID变化，重置结果
+    watch(
+      () => verifyForm.value.depositId,
+      (newVal, oldVal) => {
+        // 存证ID从有值变空，或从一个值变成另一个值时，重置结果
+        if ((!newVal && oldVal) || (newVal && oldVal && newVal !== oldVal)) {
+          resetVerifyResult();
+        }
+      }
+    );
+
     // ======================== 日志：页面初始化 ========================
     console.log('📄 VerifyView - 页面初始化');
     console.log('🔍 登录状态：', isLogin() ? '已登录' : '未登录');
@@ -152,6 +197,9 @@ export default {
 
     // 选择待验证文件：计算文件哈希（带日志）
     const handleFileSelect = async (file) => {
+       //  核心修改：选择新文件时，先重置旧验证结果
+      resetVerifyResult();
+
       // ======================== 日志：文件选择 ========================
       console.log('\n📂 选择待验证文件 - 开始处理：');
       console.log('文件信息：', {
@@ -178,6 +226,7 @@ export default {
       } catch (err) {
         fileList.value = [];
         currentFileHash.value = '';
+        resetVerifyResult(); //  新增：哈希计算失败时也重置结果
         
         // ======================== 日志：哈希计算失败 ========================
         console.error('❌ 计算文件哈希失败：', err);
@@ -250,32 +299,27 @@ export default {
           depositId: depositId,
           fileHash: fileHash
         });
-        console.log('接口配置：', {
-          baseURL: service.defaults.baseURL,
-          接口路径: '/verify/file',
-          完整请求URL: service.defaults.baseURL + '/verify/file',
-          请求方法: 'POST',
-          请求头: {
-            'Content-Type': 'application/json; charset=utf-8',
-            Authorization: getToken() ? 'Bearer ' + getToken() : '无'
-          }
-        });
+        
 
-        // 调用验证接口：传递存证ID + 待验证文件哈希
+        // 🔴 核心修改：调用重新封装的 verifyFileByDepositId（不拦截 success: false）
         const res = await verifyFileByDepositId({
           depositId: depositId,
           fileHash: fileHash
         });
 
+        // 🔴 新增日志：打印 res.data.blockIndex
+console.log('🔍 前端收到的 blockIndex：', res.data?.blockIndex); // 关键日志
+
+
         // ======================== 日志：接口响应成功 ========================
         console.log('\n✅ 验证接口响应成功：');
         console.log('响应数据：', res);
 
-        // 处理验证结果
+ // 🔴 核心修改：无论成功/失败，都保存 res.data（原始存证信息）
         verifyResult.value = {
           visible: true,
           success: res.success,
-          data: res.success ? res.data : null,
+          data: res.data || {}, // 确保 data 是对象，避免 undefined
           msg: res.msg || ''
         };
 
@@ -314,8 +358,92 @@ export default {
       }
     };
 
+    //  新增：导出验证报告（调用后端接口）
+    const exportVerifyReport = async () => {
+      if (!verifyResult.value.visible) {
+        ElMessage.warning('暂无验证结果，无法导出报告');
+        return;
+      }
+
+      isExporting.value = true;
+      const loading = ElLoading.service({ text: '正在生成验证报告...' });
+
+      try {
+        // 1. 构造报告数据（和后端接口参数对应）
+        const reportData = {
+          depositId: verifyForm.value.depositId.trim(),
+          verifySuccess: verifyResult.value.success,
+          // 🔴 优化：优先从 verifyResult.data 拿原始文件名（失败时也有值）
+          originalFileName: verifyResult.value.data?.fileName || fileList.value[0]?.name || '未知文件名',
+          // 🔴 优化：优先从 verifyResult.data 拿原始哈希（失败时也有值）
+          originalFileHash: verifyResult.value.data?.fileHash || '未查询到',
+          currentFileHash: currentFileHash.value,
+          // 🔴 优化：优先从 verifyResult.data 拿存证时间（失败时也有值）
+          depositTime: verifyResult.value.data?.depositTime || '未查询到',
+          // 🔴 优化：优先从 verifyResult.data 拿区块索引（失败时也有值）
+          blockIndex: verifyResult.value.data?.blockIndex || '未查询到',
+          verifyTime: new Date().toISOString(),
+          failReason: verifyResult.value.msg || '无详细原因'
+        };
+
+        // 🔴 重点日志：打印 blockIndex 相关信息
+        console.log('📤 导出报告 - blockIndex 详情：');
+        console.log('verifyResult.data.blockIndex：', verifyResult.value.data?.blockIndex);
+        console.log('传递给后端的 blockIndex：', reportData.blockIndex);
+
+        console.log('\n📤 调用验证报告导出接口：');
+        console.log('接口参数：', reportData);
+        ;
+
+ // 2. 调用后端接口（响应类型为二进制流）
+        const response = await axios({
+          url: 'http://localhost:3001/api/file/export-verify-report',
+          method: 'POST',
+          data: reportData,
+          responseType: 'blob', // 关键：指定二进制流响应
+          headers: {
+            'Authorization': `Bearer ${getToken()}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        // 3. 处理PDF流，触发浏览器下载
+        const blob = new Blob([response.data], { type: 'application/pdf' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+
+        // 文件名格式：验证报告_存证ID_时间戳.pdf
+        const timestamp = new Date().toISOString().replace(/[-:.T]/g, '').slice(0, 14);
+        const fileName = `验证报告_${reportData.depositId}_${timestamp}.pdf`;
+
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+
+        // 4. 清理临时资源
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        console.log('✅ 验证报告导出成功：', fileName);
+        ElMessage.success('验证报告导出成功');
+      } catch (err) {
+        console.error('\n❌ 导出验证报告失败：', err);
+        console.error('异常消息：', err.message);
+        console.error('异常堆栈：', err.stack);
+        console.error('响应状态：', err.response?.status || '无');
+        console.error('响应数据：', err.response?.data || '无');
+
+        ElMessage.error('导出验证报告失败：' + (err.message || '服务器异常，请重试'));
+      } finally {
+        isExporting.value = false;
+        loading.close();
+      }
+    };
+
     return {
       isVerifying,
+      isExporting, // 导出中状态
       fileList,
       currentFileHash,
       verifyForm,
@@ -323,7 +451,8 @@ export default {
       formatTime, // 🌟 导出时间格式化方法
       handleFileSelect,
       beforeFileUpload,
-      startVerify
+      startVerify,
+      exportVerifyReport // 导出报告方法
     };
   }
 };
@@ -408,6 +537,23 @@ export default {
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   padding: 20px;
+}
+
+/* 🔴 新增：导出按钮样式 */
+.export-btn-container {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 15px;
+}
+
+.export-btn {
+  background-color: #48bb78;
+  border-color: #48bb78;
+}
+
+.export-btn:hover {
+  background-color: #38a169;
+  border-color: #38a169;
 }
 
 .result-content {

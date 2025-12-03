@@ -62,19 +62,32 @@ exports.verifyFile = (req, res) => {
       });
     } else {
       console.log('❌ 后端验证 - 验证失败，返回结果给前端：', verifyResult.msg);
+      // 🔴 新增日志：打印 verifyResult 中的 blockInfo
+  console.log('🔍 verifyController - verifyResult.blockInfo：', verifyResult.blockInfo);
+  console.log('🔍 verifyController - verifyResult.blockInfo.index：', verifyResult.blockInfo?.index);
       
-      // 🌟 核心修改3：失败时也提取 blockInfo（存证ID存在但哈希不匹配时有用）
+      // 核心修改3：失败时也提取 blockInfo（存证ID存在但哈希不匹配时有用）
+      // 🔴 核心修改1：失败时也提取原始存证信息（如果区块链服务返回了）
+      const depositRecord = verifyResult.data || {}; // 可能包含原始存证记录
       const blockInfo = verifyResult.blockInfo || {};
-      // 🌟 重点修改3：失败时也返回统一格式，避免前端字段缺失
+      // 🔴 核心修改2：失败时返回完整的原始存证信息（不再是默认值）
       const frontEndData = {
         depositId: depositId,
-        fileName: '无', // 失败时默认值
-        fileHash: verifyResult.originalHash || '无', // 原始哈希（可能为空）
-        depositTime: '', // 失败时默认空
-        blockIndex: '无', // 失败时默认值
-        verifyHash: fileHash
+        // 原始文件名（从区块链返回的记录中拿）
+        fileName: depositRecord.fileName || depositRecord.originalFileName || '未知文件名',
+        // 原始存证哈希（从区块链返回的 originalHash 拿）
+        fileHash: verifyResult.originalHash || '未查询到',
+        // 原始存证时间（从区块链返回的记录中拿）
+        depositTime: depositRecord.depositTime || depositRecord.createTime || '未查询到',
+        // 原始区块索引（从区块链返回的 blockInfo 拿）
+        // 🔴 核心修复：优先从 depositRecord 拿 blockIndex（原始存证记录中可能直接存储）
+        blockIndex: blockInfo.index !== undefined ? blockInfo.index : '未查询到',
+        verifyHash: fileHash // 待验证文件哈希
       };
 
+      // 🔴 新增日志：打印返回给前端的 frontEndData.blockIndex
+  console.log('🔍 verifyController - 返回给前端的 blockIndex：', frontEndData.blockIndex);
+  
       return res.status(200).json({ 
         success: false, 
         msg: verifyResult.msg || '文件已被篡改或存证ID无效', 

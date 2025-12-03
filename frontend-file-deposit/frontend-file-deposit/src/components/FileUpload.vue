@@ -46,7 +46,8 @@
       </div>
       <div class="meta-item">
         <span class="meta-label">文件大小：</span>
-        <span class="meta-value">{{ (fileMeta.fileSize / 1024).toFixed(2) }} KB</span>
+        <!-- 🔴 1. 替换为自适应格式化 -->
+        <span class="meta-value">{{ formatFileSize(fileMeta.fileSize) }}</span>
       </div>
       <div class="meta-item">
         <span class="meta-label">文件类型：</span>
@@ -106,59 +107,57 @@ export default {
     };
 
     // ---------------- 自定义上传逻辑（模块二上传 + 模块三上链）----------------
-      const handleCustomUpload = async (options) => {
-        const file = options.file; // 获取选择的文件
-        try {
-          // ① 调用模块二接口：文件上传 + 生成 SHA256 哈希
-          const uploadRes = await uploadFile(file);
-          if (!uploadRes.success) {
-            throw new Error(uploadRes.msg || '文件上传失败');
-          }
+  // FileUpload.vue 中 handleCustomUpload 方法修改
+const handleCustomUpload = async (options) => {
+  const file = options.file; // Element Plus 传递的文件对象（options.file 是原生 File 包装体）
+  try {
+    // 🔴 核心修复：创建 FormData，append file 字段
+    const formData = new FormData();
+    formData.append('file', file); // 直接 append options.file（Element Plus 已处理为原生 File 对象）
 
-          // 🔥 直接使用后端返回的统一存证ID和元数据（无需二次上链）
-        const { depositId, fileName, fileSize, fileType, fileHash, uploadTime, blockStatus = '已存证' } = uploadRes.data;
-          /*
-          // ② 调用模块三接口：将文件哈希+元数据存证上链（核心联动）
-          // 修复2：添加 sha256Hash 字段，值为模块二的 fileHash
-           const blockchainRes = await depositFileToBlockchain({
-          ...uploadRes.data, // 模块二的其他字段（fileName、fileSize 等）
-          sha256Hash: uploadRes.data.fileHash, // 关键：对齐模块三要求的字段名
-          userId: uploadRes.data.userId || 3 // 确保 userId 传递（根据模块二返回调整）
-        });
-        if (!blockchainRes.success) {
-          throw new Error(blockchainRes.msg || '存证上链失败');
-        }
+    console.log('构造的 FormData：', formData); // 打印确认（可在控制台看到 FormData 结构）
+    
+    // 调用 fileApi.js 的 uploadFile 方法（传递 FormData）
+    const uploadRes = await uploadFile(formData);
 
-          // ③ 整合前端本地文件名 + 模块二元数据 + 模块三存证信息
-          const localOriginalFileName = file.name; // 前端本地中文文件名（无乱码）
+    if (!uploadRes.success) {
+      throw new Error(uploadRes.msg || '文件上传失败');
+    }
 
-          const formalDepositId = blockchainRes.data.depositRecord.id;
-*/
-          // 整合元数据（前端展示用）
-        fileMeta.value = {
-          fileName: fileName, // 后端返回的UTF-8中文文件名（无乱码）
-          depositId: depositId, // 后端生成的统一存证ID（日期+序号）
-          fileSize: fileSize,
-          fileType: fileType,
-          fileHash: fileHash,
-          uploadTime: uploadTime,
-          blockStatus: blockStatus // 区块链存证状态
-        };
+    // 🔥 直接使用后端返回的统一存证ID和元数据（无需二次上链）
+    const { depositId, fileName, fileSize, fileType, fileHash, uploadTime, blockStatus = '已存证' } = uploadRes.data;
 
-          // ④ 更新状态并提示
-          uploadSuccess.value = true;
-          fileList.value = []; // 清空文件列表
-          ElMessage.success(`
-            文件上传成功！
-            存证上链成功！
-            存证ID：${depositId}
-          `);
+    // 整合元数据（前端展示用）
+    fileMeta.value = {
+      fileName: fileName, // 后端返回的UTF-8中文文件名（无乱码）
+      depositId: depositId, // 后端生成的统一存证ID（日期+序号）
+      fileSize: fileSize,
+      fileType: fileType,
+      fileHash: fileHash,
+      uploadTime: uploadTime,
+      blockStatus: blockStatus // 区块链存证状态
+    };
 
-        } catch (err) {
-          // 上传/上链失败，提示错误
-          ElMessage.error(`操作失败：${err.message}`);
-        }
-      };
+    // ④ 更新状态并提示
+    uploadSuccess.value = true;
+    fileList.value = []; // 清空文件列表
+    ElMessage.success(`
+      文件上传成功！
+      存证上链成功！
+      存证ID：${depositId}
+    `);
+
+    // 🔴 关键：通知 Element Plus 上传成功（否则组件会一直显示“上传中”）
+    options.onSuccess();
+
+  } catch (err) {
+    // 上传失败，通知 Element Plus 失败状态
+    options.onError(err);
+    // 提示错误
+    ElMessage.error(`操作失败：${err.message}`);
+    console.error('上传异常：', err);
+  }
+};
 
     // ---------------- 移除已选择的文件 ----------------
     const handleRemoveFile = (file, list) => {
@@ -170,6 +169,20 @@ export default {
       return new Date(isoTime).toLocaleString(); // 格式：2025/11/26 15:30:00
     };
 
+    // 🔴 2. 新增：文件大小自适应格式化函数
+    const formatFileSize = (size) => {
+      const numericSize = Number(size);
+      if (isNaN(numericSize) || numericSize < 0) return '0 B';
+      const units = ['B', 'KB', 'MB'];
+      let unitIndex = 0;
+      let formattedSize = numericSize;
+      while (formattedSize >= 1024 && unitIndex < units.length - 1) {
+        formattedSize /= 1024;
+        unitIndex++;
+      }
+      return `${formattedSize.toFixed(2)} ${units[unitIndex]}`;
+    };
+
     // 暴露变量和方法给模板使用
     return {
       fileList,
@@ -178,7 +191,8 @@ export default {
       handleBeforeUpload,
       handleCustomUpload,
       handleRemoveFile,
-      formatTime
+      formatTime,
+      formatFileSize // 新增：暴露函数
     };
   }
 };

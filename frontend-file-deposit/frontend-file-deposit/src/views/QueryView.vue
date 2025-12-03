@@ -29,7 +29,12 @@
             <el-table-column label="存证ID" prop="depositId" align="center" width="220" />
             <el-table-column label="文件名" prop="fileName" align="center" />
             <el-table-column label="文件类型" prop="fileType" align="center" width="120" />
-            <el-table-column label="文件大小(KB)" prop="fileSize" align="center" width="150" />
+            <!-- 🔴 修改1：文件大小自动格式化（B/KB/MB） -->
+            <el-table-column label="文件大小" align="center" width="150">
+              <template #default="scope">
+                {{ formatFileSize(scope.row.fileSize) }}
+              </template>
+            </el-table-column>
             <!-- 新增：哈希值列 -->
             <el-table-column label="SHA256哈希值" prop="fileHash" align="center" min-width="280" />
             <!-- 格式化存证时间 -->
@@ -41,7 +46,7 @@
             <el-table-column label="区块索引" prop="blockIndex" align="center" width="120" /> <!-- 新增 -->
             <el-table-column label="区块哈希" prop="blockHash" align="center" min-width="280" /> <!-- 新增 -->
             <el-table-column label="前一区块哈希" prop="prevBlockHash" align="center" min-width="280" /> <!-- 新增 -->
-            <!-- 🔴 修改：操作列新增「导出凭证」按钮 -->
+            <!-- 修改：操作列新增「导出凭证」按钮 -->
             <el-table-column label="操作" align="center" width="200"> <!-- 加宽操作列（容纳两个按钮） -->
               <template #default="scope">
                 <el-button type="text" @click="viewDetail(scope.row)">查看详情</el-button>
@@ -55,7 +60,7 @@
       </el-tab-pane>
 
 
-      <!-- 按文件名查询 -->
+      <!-- 按文件名查询 ，新增文件大小自动格式化列-->
       <el-tab-pane label="按文件名查询" name="queryByName">
         <div class="query-form">
           <el-input
@@ -77,6 +82,12 @@
             <el-table-column label="存证ID" prop="depositId" align="center" />
             <el-table-column label="文件名" prop="fileName" align="center" />
             <el-table-column label="文件类型" prop="fileType" align="center" />
+            <!-- 🔴 修改2：按文件名查询结果 - 新增文件大小自动格式化列 -->
+            <el-table-column label="文件大小" align="center" width="150">
+              <template #default="scope">
+                {{ formatFileSize(scope.row.fileSize) }}
+              </template>
+            </el-table-column>
             <el-table-column label="SHA256哈希值" prop="fileHash" align="center" min-width="280" />
             <el-table-column label="存证时间" align="center">
               <template #default="scope">
@@ -86,9 +97,13 @@
             <el-table-column label="区块索引" prop="blockIndex" align="center" width="120" /> <!-- 新增 -->
             <el-table-column label="区块哈希" prop="blockHash" align="center" min-width="280" /> <!-- 新增 -->
             <el-table-column label="前一区块哈希" prop="prevBlockHash" align="center" min-width="280" /> <!-- 新增 -->
-            <el-table-column label="操作" align="center">
+            <!-- 修改3：按文件名查询结果 - 操作列新增「导出凭证」按钮 -->
+            <el-table-column label="操作" align="center" width="200">
               <template #default="scope">
                 <el-button type="text" @click="viewDetail(scope.row)">查看详情</el-button>
+                <el-button type="text" icon="el-icon-download" @click="exportVoucher(scope.row.depositId)" class="export-btn">
+                  导出凭证
+                </el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -120,8 +135,9 @@
               <el-descriptions-item label="文件类型">
                 {{ idQueryResult.data.fileType }}
               </el-descriptions-item>
-              <el-descriptions-item label="文件大小(KB)">
-                {{ idQueryResult.data.fileSize }}
+              <!-- 🔴 修改4：按存证ID查询 - 文件大小自动格式化 -->
+              <el-descriptions-item label="文件大小">
+                {{ formatFileSize(idQueryResult.data.fileSize) }}
               </el-descriptions-item>
               <el-descriptions-item label="文件哈希">
                 {{ idQueryResult.data.fileHash }}
@@ -137,6 +153,16 @@
               </el-descriptions-item>
               <el-descriptions-item label="前一区块哈希">
                 {{ idQueryResult.data.prevBlockHash }}
+              </el-descriptions-item>
+              <!-- 新增：导出凭证操作行（占2列，居中显示） -->
+              <el-descriptions-item label="操作" :span="2" align="center">
+                <el-button 
+                  type="primary" 
+                  icon="el-icon-download" 
+                  @click="exportVoucher(idQueryResult.data.depositId)"
+                >
+                  导出存证凭证
+                </el-button>
               </el-descriptions-item>
             </el-descriptions>
           </div>
@@ -159,7 +185,7 @@ import {
   queryFileByName, 
   queryFileById 
 } from '@/api/queryApi';
-// 🔴 新增：导入导出凭证API
+//  新增：导入导出凭证API
 import { exportVoucher as exportVoucherApi } from '@/api/fileApi';
 import { isLogin } from '@/utils/auth';
 
@@ -207,34 +233,74 @@ export default {
   });
 };
 
-// 🔴 新增：导出存证凭证方法
-    const exportVoucher = async (depositId) => {
-      try {
-        if (!depositId) {
-          ElMessage.warning('存证ID无效，无法导出');
-          return;
-        }
-        // 调用后端导出接口（传存证ID）
-        const response = await exportVoucherApi(depositId);
+// 🔴 修复后的文件大小格式化函数（精准处理字节单位，避免边界错误）
+const formatFileSize = (size) => {
+   // 🔴 新增：打印原始值和数据类型
+  console.log('原始 fileSize 值：', size);
+  console.log('原始 fileSize 类型：', typeof size);
+  // 关键：先把 size 转为数字（避免字符串/undefined 导致计算错误）
+  const numericSize = Number(size);
+   console.log('转为数字后：', numericSize); // 正常应显示 1310334，而非 NaN/其他值
+  if (isNaN(numericSize) || numericSize < 0) return '0 B'; // 异常值处理
 
-        // 处理下载（从响应头获取文件名，或自定义）
-        const fileName = `存证凭证_${depositId}.pdf`;
-        const blob = new Blob([response.data], { type: 'application/pdf' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        // 清理资源
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        ElMessage.success('存证凭证导出成功！');
-      } catch (err) {
-        ElMessage.error('导出失败：' + (err.message || '服务器异常'));
-        console.error('导出凭证失败：', err);
-      }
-    };
+  const units = ['B', 'KB', 'MB'];
+  let unitIndex = 0;
+  let formattedSize = numericSize;
+
+  // 字节 → KB → MB 的转换逻辑（1024 进位）
+  while (formattedSize >= 1024 && unitIndex < units.length - 1) {
+    formattedSize /= 1024;
+    unitIndex++;
+  }
+
+  // 保留2位小数，确保显示精准（如 1310334 B → 1279.62 KB → 1.25 MB）
+  return `${formattedSize.toFixed(2)} ${units[unitIndex]}`;
+};
+
+// 🔴 修复后的导出存证凭证方法
+const exportVoucher = async (depositId) => {
+  try {
+    if (!depositId) {
+      ElMessage.warning('存证ID无效，无法导出');
+      return;
+    }
+
+    // 显示加载提示（优化体验）
+    ElMessage.info('正在生成存证凭证，请稍候...');
+    
+    // 调用后端接口（直接接收 Blob 对象，无需取 .data）
+    const blob = await exportVoucherApi(depositId);
+
+    // 🔴 关键1：确认 blob 有效（避免空数据）
+    if (!blob || !(blob instanceof Blob)) {
+      throw new Error('获取 PDF 数据失败，文件为空');
+    }
+
+    // 🔴 关键2：创建 blob URL，触发下载（直接用接口返回的 blob）
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    // 文件名格式：存证凭证_存证ID.pdf（清晰易识别）
+    a.download = `存证凭证_${depositId}.pdf`;
+    a.href = url;
+
+    // 触发下载（兼容所有浏览器）
+    document.body.appendChild(a);
+    a.click();
+
+    // 🔴 关键3：清理资源（避免内存泄漏）
+    setTimeout(() => {
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    }, 100);
+
+    ElMessage.success('存证凭证导出成功！');
+    console.log('存证凭证导出完成，存证ID：', depositId);
+
+  } catch (err) {
+    ElMessage.error('导出失败：' + (err.message || '服务器异常'));
+    console.error('导出凭证失败（存证ID：' + depositId + '）：', err);
+  }
+};
 
     // 页面加载时获取文件列表
     onMounted(() => {
@@ -372,6 +438,7 @@ const queryById = async () => {
       queryById,
       viewDetail,
       formatTime, // 导出时间格式化函数
+      formatFileSize, // 🔴 导出新增的文件大小格式化函数
       exportVoucher // 🔴 导出新增方法
     };
   }

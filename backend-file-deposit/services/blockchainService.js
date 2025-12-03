@@ -284,6 +284,9 @@ verifyFileIntegrity(depositId, verifyHash) {
       };
     } else {
       console.error('❌ 区块链服务 - 验证失败：文件已被篡改');
+       // 🔴 新增日志：打印 blockInfo 完整结构
+  console.log('🔍 区块链服务 - 失败时返回的 blockInfo：', blockInfo);
+  console.log('🔍 区块链服务 - 失败时 blockInfo.index：', blockInfo.index); // 关键日志
       // 哈希不一致：文件已被篡改
       return {
         success: false,
@@ -305,7 +308,75 @@ verifyFileIntegrity(depositId, verifyHash) {
       };
     }
   }
+  // blockchainService.js 末尾（在 verifyFileIntegrity 方法之后）新增：
+/**
+ * 🔴 兜底方案：统一查询存证对应的区块信息（供导出报告使用）
+ * 复用 queryDepositByDepositId 方法，确保数据一致性
+ * @param {string} depositId - 存证ID
+ * @returns {Object} { blockIndex, originalFileHash, depositTime, fileName, blockInfo }
+ */
+async getDepositBlockInfoForReport(depositId) {
+  try {
+    console.log('\n🔍 区块链服务 - 兜底查询存证区块信息（用于报告）：');
+    console.log('存证ID：', depositId);
+
+    // 1. 先验证区块链完整性
+    const chainIntegrity = this.verifyChainIntegrity();
+    if (!chainIntegrity.isIntegrity) {
+      console.error('❌ 区块链不完整：', chainIntegrity.msg);
+      return {
+        blockIndex: '区块链已篡改',
+        originalFileHash: '区块链已篡改',
+        depositTime: '区块链已篡改',
+        fileName: '区块链已篡改',
+        blockInfo: null
+      };
+    }
+
+    // 2. 复用已有的 queryDepositByDepositId 方法查询存证
+    const depositResult = this.queryDepositByDepositId(depositId);
+    if (!depositResult.success) {
+      console.warn('⚠️ 未查询到存证记录：', depositResult.msg);
+      return {
+        blockIndex: '存证ID无效',
+        originalFileHash: '存证ID无效',
+        depositTime: '存证ID无效',
+        fileName: '存证ID无效',
+        blockInfo: null
+      };
+    }
+
+    // 3. 提取关键信息（从查询结果中获取，确保数据准确）
+    const depositRecord = depositResult.data.depositRecord;
+    const blockInfo = depositResult.data.blockInfo;
+    console.log('✅ 兜底查询成功，提取的区块信息：', {
+      blockIndex: blockInfo.index,
+      originalFileHash: depositRecord.fileHash,
+      depositTime: depositRecord.depositTime || blockInfo.timestamp,
+      fileName: depositRecord.fileName
+    });
+
+    return {
+      blockIndex: blockInfo.index || '未知索引', // 区块索引（必返）
+      originalFileHash: depositRecord.fileHash || '未记录', // 原始哈希
+      depositTime: depositRecord.depositTime || blockInfo.timestamp || '未记录', // 存证时间
+      fileName: depositRecord.fileName || '未知文件名', // 原始文件名
+      blockInfo: blockInfo // 完整区块信息（备用）
+    };
+  } catch (err) {
+    console.error('❌ 兜底查询存证信息异常：', err);
+    return {
+      blockIndex: '查询失败',
+      originalFileHash: '查询失败',
+      depositTime: '查询失败',
+      fileName: '查询失败',
+      blockInfo: null
+    };
+  }
 }
+}
+
+
 
 // 单例模式：确保整个系统只有一条区块链
 module.exports = new BlockchainService();

@@ -34,14 +34,14 @@ const getUserFileList = async (req, res) => {
       const filePath = path.join(uploadDir, storedFileName);
       const fileStat = fs.statSync(filePath);
 
-      // 🔥 关键：读取 .meta 文件中的真实存证ID
+      //  关键：读取 .meta 文件中的真实存证ID
       const metaFilePath = path.join(uploadDir, `${storedFileName}.meta`);
       if (!fs.existsSync(metaFilePath)) {
         console.warn(`文件 ${storedFileName} 缺少.meta备份，跳过`);
         continue;
       }
 
-    // 🔥 关键修复：添加 JSON 解析容错，避免单个文件解析失败影响整个列表
+    //  关键修复：添加 JSON 解析容错，避免单个文件解析失败影响整个列表
     let metaData;
     try {
       const metaContent = fs.readFileSync(metaFilePath, 'utf8');
@@ -57,7 +57,7 @@ const getUserFileList = async (req, res) => {
       const realDepositId = metaData.depositId; // 真实存证ID（如 20251127001）
       const originalFileName = metaData.fileName; // 本地备份的原文件名
 
-      // 🔥 按真实存证ID查询区块链（现在能精准匹配！）
+      //  按真实存证ID查询区块链（现在能精准匹配！）
       let blockIndex = '未上链';
       let blockHash = '未上链';
       let prevBlockHash = '无'; // 默认值
@@ -77,7 +77,8 @@ const getUserFileList = async (req, res) => {
         depositId: realDepositId, // 显示自动生成的存证ID（如 20251127001）
         fileName: originalFileName, // 显示真实原文件名
         fileType: fileExt.slice(1).toUpperCase(),
-        fileSize: Math.round(fileStat.size / 1024),
+        // 🔴 核心修复：删除除以1024的逻辑，直接返回原始字节数（fileStat.size 是字节）
+        fileSize: fileStat.size,
         fileHash: fileHash, // 哈希值
         depositTime: depositTime, // 区块链存证时间
         blockIndex: blockIndex,
@@ -187,7 +188,7 @@ const queryByFileName = (req, res) => {
 
     if (result.success) {
       const formattedData = result.data.map(item => {
-        // 🔥 核心：添加时间戳日志，打印原始值和类型
+        //  核心：添加时间戳日志，打印原始值和类型
         console.log('【时间戳调试日志】', {
           存证ID: item.depositRecord.id,
           文件名: item.depositRecord.fileName,
@@ -200,7 +201,7 @@ const queryByFileName = (req, res) => {
           depositId: item.depositRecord.id,//存证ID
           fileName: item.depositRecord.fileName,//文件名
           fileType: item.depositRecord.fileName.split('.').pop().toUpperCase(),
-          fileSize: item.depositRecord.fileSize || '未知',//文件大小（KB）
+          fileSize: item.depositRecord.fileSize || '未知',//文件大小（B） fileSize 是原始字节数
           fileHash: item.depositRecord.fileHash,//文件哈希值
           depositTime: item.depositRecord.depositTime, //存证时间
           blockIndex: item.blockInfo.index, // 区块索引/区块高度

@@ -28,6 +28,8 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   // 允许的请求头（包含 Authorization 和 Content-Type）
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  // 🔴 新增：暴露 Content-Disposition 头（前端需要解析文件名）
+  res.header('Access-Control-Expose-Headers', 'Content-Disposition');
   // 允许携带 Cookie
   res.header('Access-Control-Allow-Credentials', 'true');
   

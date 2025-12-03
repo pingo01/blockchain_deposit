@@ -22,4 +22,13 @@ router.get(
   fileController.exportVoucher // 调用新增的导出逻辑
 );
 
+// 🔴 新增：验证报告导出路由（POST请求）
+// 接口路径：POST /api/file/export-verify-report
+router.post(
+  '/export-verify-report',
+  verifyLogin, // 必须登录才能导出（验证者也需登录，和其他接口权限一致）
+  // 无需 verifyUploader：验证者不是上传者角色，仅需登录校验
+  fileController.exportVerifyReport // 调用fileController中新增的验证报告导出逻辑
+);
+
 module.exports = router; // 导出路由，供入口文件注册

@@ -7,7 +7,7 @@ class DepositRecord {
     this.fileHash = fileMeta.sha256Hash;
     this.userId = userId;
     this.fileName = fileMeta.fileName;
-    this.fileSize = fileMeta.fileSize;
+    this.fileSize = fileMeta.fileSize;//单位是B
     this.fileType = fileMeta.fileType;
     this.depositTime = new Date().toISOString();
   }

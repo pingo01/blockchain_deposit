@@ -10,6 +10,26 @@ const blockchainService = require('../services/blockchainService');
 
 console.log('上传目录绝对路径：', uploadConfig.uploadDir); // 启动后端时查看该日志
 
+// 🔴 新增：文件大小自适应格式化函数（用于PDF导出）
+const formatFileSizeForPDF = (size) => {
+  const numericSize = Number(size);
+  // 处理异常值
+  if (isNaN(numericSize) || numericSize < 0) return '未知大小';
+  // 单位数组（字节→KB→MB）
+  const units = ['B', 'KB', 'MB'];
+  let unitIndex = 0;
+  let formattedSize = numericSize;
+
+  // 自动进位（>=1024 且不是最后一个单位）
+  while (formattedSize >= 1024 && unitIndex < units.length - 1) {
+    formattedSize /= 1024;
+    unitIndex++;
+  }
+
+  // 保留2位小数，拼接单位
+  return `${formattedSize.toFixed(2)} ${units[unitIndex]}`;
+};
+
 // ---------------- multer 配置（保持原有稳定逻辑）----------------
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -250,7 +270,7 @@ while (retryCount < maxRetry && !blockchainSuccess) {
   }
 };
 
-// ---------------- 🔴 新增：导出存证凭证PDF逻辑（添加到文件末尾）----------------
+// ---------------- 新增：导出存证凭证PDF逻辑（添加到文件末尾）----------------
 const exportVoucher = async (req, res) => {
   try {
     // 1. 获取前端传递的存证ID（从query参数中取）
@@ -316,7 +336,8 @@ const exportVoucher = async (req, res) => {
        .text(`存证ID：${depositRecord.id}`) // 你的存证ID字段
        .text(`文件名称：${depositRecord.fileName}`) // 文件名
        .text(`文件类型：${depositRecord.fileType || '未知'}`) // 文件类型
-       .text(`文件大小：${depositRecord.fileSize ? (depositRecord.fileSize / 1024).toFixed(2) + ' KB' : '未知'}`) // 大小
+       // 🔴 核心修改：替换为自适应格式化的文件大小
+       .text(`文件大小：${formatFileSizeForPDF(depositRecord.fileSize)}`)
        .text(`SHA256哈希值：${depositRecord.sha256Hash || depositRecord.fileHash}`) // 哈希值（两种字段名兼容）
        .text(`存证时间：${depositRecord.depositTime ? new Date(depositRecord.depositTime).toLocaleString() : '未知'}`) // 存证时间
        //.text(`存证描述：${depositRecord.depositDesc || '无'}`) // 存证描述（如果有）
@@ -359,8 +380,218 @@ const exportVoucher = async (req, res) => {
   }
 };
 
+
+// 🔴 替换原有的 exportVerifyReport 方法，直接复制覆盖
+const exportVerifyReport = async (req, res) => {
+  try {
+    let { 
+      depositId, 
+      verifySuccess, 
+      originalFileName, 
+      originalFileHash, 
+      currentFileHash, 
+      depositTime, 
+      blockIndex, 
+      verifyTime, 
+      failReason 
+    } = req.body;
+
+    // 参数校验（保留原有校验，新增存证ID必填）
+    if (!depositId) return res.status(400).json({ success: false, msg: '存证ID不能为空' });
+    if (verifySuccess === undefined) return res.status(400).json({ success: false, msg: '验证结果不能为空' });
+    // 移除：不再强制要求前端传递 originalFileHash 和 currentFileHash（后端可兜底）
+
+    console.log('\n=====================================================');
+    console.log('📥 收到验证报告导出请求');
+    console.log('前端传递的原始参数：', {
+      depositId,
+      blockIndex: blockIndex || '前端未传递',
+      originalFileHash: originalFileHash || '前端未传递',
+      depositTime: depositTime || '前端未传递'
+    });
+    console.log('=====================================================');
+
+    // 🔴 核心兜底逻辑：后端主动查询区块链，不依赖前端传递
+    let blockchainQueryResult = null;
+    try {
+      console.log('🔍 后端兜底查询 - 开始查询区块链存证记录');
+      // 调用你已有的 queryDepositByDepositId 方法（无需新增任何代码）
+      blockchainQueryResult = await blockchainService.queryDepositByDepositId(depositId);
+      console.log('🔍 后端兜底查询 - 区块链返回结果：', blockchainQueryResult);
+    } catch (queryErr) {
+      console.error('⚠️ 后端兜底查询 - 查询异常：', queryErr);
+      blockchainQueryResult = { success: false, msg: '区块链查询异常' };
+    }
+
+    // 🔴 强制覆盖前端参数（优先级：后端查询结果 > 前端传递 > 默认值）
+    if (blockchainQueryResult.success && blockchainQueryResult.data) {
+      const depositRecord = blockchainQueryResult.data.depositRecord;
+      const blockInfo = blockchainQueryResult.data.blockInfo;
+
+      // 覆盖核心字段（确保100%有值）
+      blockIndex = blockInfo?.index || '未知索引'; // 区块索引（必返）
+      originalFileHash = depositRecord?.fileHash || depositRecord?.sha256Hash || '未记录'; // 兼容两种哈希字段名
+      depositTime = depositRecord?.depositTime || blockInfo?.timestamp || '未记录'; // 存证时间
+      originalFileName = depositRecord?.fileName || originalFileName || '未知文件名'; // 原始文件名
+      currentFileHash = currentFileHash || '未计算'; // 待验证哈希（前端必传，无则默认）
+    } else {
+      // 未查询到存证记录（存证ID无效）
+      blockIndex = '存证ID无效';
+      originalFileHash = '存证ID无效';
+      depositTime = '存证ID无效';
+      originalFileName = originalFileName || '未知文件名';
+      currentFileHash = currentFileHash || '未计算';
+    }
+
+    // 🔴 最终报告数据（确保无“未查询到”）
+    console.log('🔄 兜底后最终报告数据：', {
+      depositId,
+      verifySuccess,
+      originalFileName,
+      originalFileHash,
+      currentFileHash,
+      depositTime,
+      blockIndex // 这里100%有值！
+    });
+
+    // 创建 PDF 文档（保持原有配置，仅替换变量）
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: 50,
+      title: `验证报告_${depositId}`,
+      autoFirstPage: false,
+      bufferPages: true
+    });
+
+    // 加载中文字体（保持不变）
+    const fontPath = path.resolve(__dirname, '../fonts/SimHei.ttf');
+    console.log('字体文件路径：', fontPath);
+    if (fs.existsSync(fontPath)) {
+      doc.font(fontPath);
+      console.log('✅ 中文字体加载成功');
+    } else {
+      console.warn('⚠️ 未找到中文字体文件，使用默认英文字体');
+      doc.font('Helvetica');
+    }
+
+    // 设置响应头（保持不变，优化文件名UTF-8编码）
+    const timestamp = new Date().toISOString().replace(/[-:\.T]/g, '').slice(0, 14);
+    const fileName = `验证报告_${depositId}_${timestamp}.pdf`;
+    
+    res.setHeader('Content-Type', 'application/pdf; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`);
+    res.setHeader('Cache-Control', 'no-store, no-cache');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Content-Transfer-Encoding', 'binary');
+    res.setTimeout(60000);
+
+    // PDF 流处理（保持不变）
+    doc.pipe(res);
+
+    doc.on('finish', () => {
+      console.log('✅ PDF 流传输完成，响应即将结束');
+      if (!res.finished) {
+        res.end();
+      }
+    });
+
+    doc.on('error', (err) => {
+      console.error('❌ PDF 生成错误：', err.stack);
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, msg: 'PDF 生成失败：' + err.message });
+      } else if (!res.finished) {
+        res.end();
+      }
+    });
+
+    res.on('error', (err) => {
+      console.error('❌ 响应错误：', err.stack);
+      doc.destroy();
+    });
+
+    // 手动添加第一页（保持不变）
+    doc.addPage();
+
+    // 生成 PDF 内容（仅替换变量，确保 blockIndex 有值）
+    doc.fontSize(24)
+       .text('文件完整性验证报告', { align: 'center' })
+       .moveDown(2);
+    doc.fontSize(14)
+       .text('FILE INTEGRITY VERIFICATION REPORT', { align: 'center', color: '#666' })
+       .moveDown(3);
+
+    // 一、验证基本信息（保持不变）
+    doc.fontSize(16)
+       .text('一、验证基本信息', { underline: true })
+       .moveDown(1.5);
+    doc.fontSize(12)
+       .text(`存证ID：${depositId}`)
+       .text(`验证文件名称：${originalFileName}`)
+       .text(`验证时间：${verifyTime ? new Date(verifyTime).toLocaleString() : new Date().toLocaleString()}`)
+       .text(`验证结果：${verifySuccess ? '验证通过（文件未被篡改）' : '验证失败'}`)
+       .moveDown(2);
+
+    // 二、哈希值核对（保持不变）
+    doc.fontSize(16)
+       .text('二、哈希值核对', { underline: true })
+       .moveDown(1.5);
+    doc.fontSize(12)
+       .text(`原始存证SHA256哈希：`)
+       .text(originalFileHash, { indent: 20 })
+       .moveDown(0.8)
+       .text(`待验证文件SHA256哈希：`)
+       .text(currentFileHash, { indent: 20 })
+       .moveDown(0.8)
+       .text(`哈希值匹配状态：${verifySuccess ? '完全匹配' : '不匹配'}`)
+       .moveDown(2);
+
+    // 三、存证关联信息（🔴 关键修改：直接使用兜底后的 blockIndex）
+    doc.fontSize(16)
+       .text('三、存证关联信息', { underline: true })
+       .moveDown(1.5);
+    doc.fontSize(12)
+       .text(`存证时间：${depositTime ? new Date(depositTime).toLocaleString() : '未记录'}`)
+       .text(`区块索引：${blockIndex}`) // 这里100%有值，不会再是“未查询到”
+       .moveDown(2);
+
+    // 四、验证结论（保持不变）
+    doc.fontSize(16)
+       .text('四、验证结论', { underline: true })
+       .moveDown(1.5);
+    const conclusion = verifySuccess 
+      ? '结论：待验证文件的哈希值与区块链存证哈希值完全一致，文件内容未被篡改，存证信息真实有效。'
+      : `结论：待验证文件未通过完整性校验。原因：${failReason || '哈希值不匹配或存证ID不存在/已失效'}`;
+    doc.fontSize(12).text(conclusion).moveDown(2);
+
+    // 五、声明（保持不变）
+    doc.fontSize(10)
+       .text('声明：', { bold: true })
+       .text('1. 本报告基于区块链存证数据生成，验证过程公开透明，结果不可篡改；', { indent: 20 })
+       .text('2. 报告仅对本次验证的文件和存证ID负责，有效期与存证信息一致；', { indent: 20 })
+       .text('3. 如需核实报告真实性，可通过平台输入存证ID重新验证。', { indent: 20 })
+       .moveDown(3);
+
+    // 页脚（保持不变）
+    doc.fontSize(9)
+       .text('报告生成时间：' + new Date().toLocaleString(), { align: 'center', color: '#999' })
+       .text('数字存证平台 @ 2025', { align: 'center', color: '#999' });
+
+    doc.end();
+    console.log('✅ PDF 生成流程已启动，等待流传输');
+
+  } catch (err) {
+    console.error('❌ 导出验证报告异常：', err.stack);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, msg: '导出验证报告失败：' + err.message });
+    } else if (!res.finished) {
+      res.end();
+    }
+  }
+};
+
 module.exports = {
   upload, // multer 上传对象
   uploadFile, // 核心上传逻辑
-  exportVoucher // 新增：导出凭证逻辑
+  exportVoucher, // 新增：导出凭证逻辑
+  exportVerifyReport // 新增：验证报告导出接口
 };
