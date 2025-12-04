@@ -4,6 +4,19 @@ const DepositRecord = require('../models/DepositRecord');
 const fs = require('fs');
 const path = require('path');
 
+// 新增：引入数据库工具函数（和authController.js复用同一套）
+const { executeSql } = require('../db/index');
+
+// ========== 新增：时区转换函数（UTC→东八区） ==========
+function convertToCSTTime(isoTimestamp) {
+  if (!isoTimestamp) return new Date().toISOString().slice(0, 19).replace('T', ' ');
+  const date = new Date(isoTimestamp);
+  // 东八区偏移：UTC+8小时
+  date.setTime(date.getTime() + 8 * 60 * 60 * 1000);
+  return date.toISOString().slice(0, 19).replace('T', ' ');
+}
+
+
 // 区块链数据持久化路径（避免服务重启后数据丢失）
 const CHAIN_STORAGE_PATH = path.join(__dirname, '../data/blockchain.json');
 
@@ -11,6 +24,114 @@ class BlockchainService {
   constructor() {
     // 初始化区块链（从本地加载或创建创世区块）
     this.chain = this.loadChainFromStorage();
+    // 新增：初始化时同步历史数据到数据库（仅首次启动执行，避免重复）
+    this.syncHistoryToDB();
+  }
+
+   // ========== 新增：历史数据同步到数据库 ==========
+  async syncHistoryToDB() {
+    try {
+      console.log('📌 开始同步历史区块数据到MySQL...');
+      for (const block of this.chain) {
+        const { index, prevHash, data, timestamp, hash } = block;
+        
+        // 1. 区块入库（先查后插，避免重复）
+        const blockExist = await executeSql(
+          'SELECT id FROM block WHERE index_num = ?',
+          [index]
+        );
+        if (blockExist.length === 0) {
+          const mysqlTime = convertToCSTTime(timestamp); 
+          await executeSql(
+            `INSERT INTO block 
+             (index_num, prev_hash, current_hash, data, timestamp) 
+             VALUES (?, ?, ?, ?, ?)`,
+            [
+              index,
+              prevHash,
+              hash,
+              JSON.stringify(data),
+              mysqlTime
+            ]
+          );
+          console.log(`✅ 区块 ${index} 同步到MySQL成功`);
+        }
+
+        // 2. 存证记录入库（创世区块跳过）
+        if (index === 0) continue;
+        const { id: depositId, fileHash, userId, fileName, fileSize, fileType, depositTime } = data;
+        const depositExist = await executeSql(
+          'SELECT id FROM deposit_record WHERE deposit_id = ?',
+          [depositId]
+        );
+        if (depositExist.length === 0) {
+          // 替换：使用时区转换函数
+        const mysqlDepositTime = convertToCSTTime(depositTime);
+          await executeSql(
+            `INSERT INTO deposit_record 
+             (deposit_id, user_id, file_name, file_type, file_size, file_hash, deposit_time, block_index_num) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              depositId,
+              userId,
+              fileName,
+              fileType,
+              fileSize,
+              fileHash,
+              mysqlDepositTime,
+              index
+            ]
+          );
+          console.log(`✅ 存证记录 ${depositId} 同步到MySQL成功`);
+        }
+      }
+      console.log('🎉 历史区块数据同步到MySQL完成！');
+    } catch (err) {
+      console.error('❌ 历史数据同步失败：', err.message);
+    }
+  }
+
+  // ========== 新增：单条存证+区块入库（供新增文件时调用） ==========
+  async saveToDB(depositRecord, newBlock) {
+    try {
+      // 1. 插入区块
+      const mysqlBlockTime = convertToCSTTime(newBlock.timestamp); 
+      await executeSql(
+        `INSERT INTO block 
+         (index_num, prev_hash, current_hash, data, timestamp) 
+         VALUES (?, ?, ?, ?, ?)`,
+        [
+          newBlock.index,
+          newBlock.prevHash,
+          newBlock.hash,
+          JSON.stringify(depositRecord),
+          mysqlBlockTime
+          
+        ]
+      );
+
+      // 2. 插入存证记录
+      const mysqlDepositTime = convertToCSTTime(depositRecord.depositTime); 
+      await executeSql(
+        `INSERT INTO deposit_record 
+         (deposit_id, user_id, file_name, file_type, file_size, file_hash, deposit_time, block_index_num) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          depositRecord.id,
+          depositRecord.userId,
+          depositRecord.fileName,
+          depositRecord.fileType,
+          depositRecord.fileSize,
+          depositRecord.fileHash,
+          mysqlDepositTime,
+          newBlock.index
+        ]
+      );
+      return { success: true };
+    } catch (err) {
+      console.error('❌ 新增数据入库失败：', err.message);
+      return { success: false, msg: err.message };
+    }
   }
 
   // 1. 初始化：创建创世区块（区块链的第一个区块，无前置区块）
@@ -80,9 +201,15 @@ class BlockchainService {
       // ③ 将新区块加入区块链
       this.chain.push(newBlock);
       
-      // ④ 持久化更新后的区块链
+      // ④ 持久化更新后的区块链，到本地JSON
       this.saveChainToStorage(this.chain);
 
+      // ⑤ 新增：同步到MySQL数据库
+      const dbResult = await this.saveToDB(depositRecord, newBlock);
+      if (!dbResult.success) {
+        console.warn('⚠️ 本地存储成功，但数据库入库失败：', dbResult.msg);
+      }
+      
       return {
         success: true,
         msg: '文件哈希存证上链成功！',
@@ -142,7 +269,7 @@ class BlockchainService {
       const blockData = block.data;
       // 排除创世区块（创世区块数据不是存证记录）
       if (blockData.fileHash && blockData.fileHash === fileHash) {
-         console.log(`📋 存证ID ${depositId} 对应的原始数据：`, {
+         console.log(`📋 存证ID ${blockData.id} 对应的原始数据：`, {
         原始文件名: blockData.fileName,
         原始哈希值: blockData.fileHash,
         哈希长度: blockData.fileHash.length
