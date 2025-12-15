@@ -1,5 +1,8 @@
 <template>
   <div class="login-container">
+    <div class="page-title">
+      数字资产存证系统
+    </div>
     <el-card class="login-card">
       <h2 class="login-title">用户登录</h2>
       <el-form 
@@ -120,10 +123,24 @@ export default {
 <style scoped>
 .login-container {
   display: flex;
+  flex-direction: column; /* 改为纵向布局，让标题和卡片垂直排列 */
   justify-content: center;
   align-items: center;
   min-height: 100vh;
   background-color: #f8f9fa;
+  padding-top: 20px; /* 顶部留空，避免标题贴边 */
+}
+
+/* 新增：页面顶部的系统标题样式 */
+/* 系统大标题：上移 + 调整间距 */
+.page-title {
+  font-size: 32px;
+  font-weight: bold;
+  color: #1989fa;
+  margin-bottom: 30px; /* 减少与登录框的间距 */
+  letter-spacing: 2px;
+  /* 额外上移（可选）：通过负margin让标题更靠上 */
+  margin-top: -50px;
 }
 
 .login-card {
