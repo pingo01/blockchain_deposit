@@ -20,10 +20,10 @@
             :on-change="handleFileSelect"
             :file-list="fileList"
             :before-upload="beforeFileUpload"
-            accept=".pdf,.docx,.doc,.jpg,.png,.jpeg,.zip,.rar,.txt"
+            accept=".pdf,.docx,.doc,.jpg,.png,.jpeg,.txt"
           >
             <el-button type="primary" icon="Upload">选择待验证文件</el-button>
-            <div class="upload-tip">支持 PDF、Word、图片、压缩包、文本等格式</div>
+            <div class="upload-tip">支持 PDF、Word、图片、文本等格式</div>
           </el-upload>
         </el-form-item>
 
@@ -328,7 +328,8 @@ console.log('🔍 前端收到的 blockIndex：', res.data?.blockIndex); // 关�
           ElMessage.success('验证通过！文件未被篡改');
         } else {
           console.log('❌ 验证流程完成：文件已被篡改或存证ID无效');
-          ElMessage.error('验证失败：' + res.msg);
+          // 【删除】移除这行手动错误提示（request.js已弹）
+      // ElMessage.error('验证失败：' + res.msg);
         }
 
       } catch (err) {
@@ -348,7 +349,8 @@ console.log('🔍 前端收到的 blockIndex：', res.data?.blockIndex); // 关�
           msg: err.message || '验证接口异常，请重试'
         };
 
-        ElMessage.error('验证失败：' + (err.message || '验证接口异常，请重试'));
+          // 【删除】移除这行手动错误提示（request.js已弹）
+    // ElMessage.error('验证失败：' + (err.message || '验证接口异常，请重试'));
       } finally {
         isVerifying.value = false;
         loading.close();

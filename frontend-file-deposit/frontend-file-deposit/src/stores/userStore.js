@@ -55,7 +55,8 @@ export const useUserStore = defineStore('user', {
         this.token = '';
         console.error('登录异常：', err);
         ElMessage.error(err.message || '登录失败，请重试'); // 唯一错误提示
-        throw err;
+        //throw err;
+         return false; // 替换抛错，返回false
       }
     },
 //------------------------------退出方法-----------------------
@@ -77,7 +78,12 @@ export const useUserStore = defineStore('user', {
     /*-------------------------修改个人信息方法----------------------*/ 
     async updateProfile(profileData) {
       const now = Date.now();
-      if (now - this.lastOperateTime < this.operateInterval) return;
+      //if (now - this.lastOperateTime < this.operateInterval) return;
+       // 【修改】重复操作时，返回false而非空return，让前端感知
+      if (now - this.lastOperateTime < this.operateInterval) {
+        ElMessage.warning('操作太频繁，请稍后再试'); // 【新增】友好提示重复操作
+        return false;
+      }
       this.lastOperateTime = now;
 
       // 🌟 新增：昵称、手机号校验规则（和前端一致）
@@ -114,13 +120,17 @@ export const useUserStore = defineStore('user', {
           ElMessage.success(res.msg || '个人信息修改成功！');
           return res;
         } else {
-          throw new Error(res.msg || '个人信息修改失败');
+           // 【修改】后端返回success:false时，不再抛错，直接提示并返回false（request.js已弹提示，这里可注释）
+          // ElMessage.error(res.msg || '个人信息修改失败');
+          return false;
         }
       } catch (err) {
         console.error('修改个人信息异常：', err);
-        // 优化：只提示后端返回的错误，避免重复提示
-        ElMessage.error(err.message || '修改失败，请重试');
-        throw err;
+        // 【删除】移除catch中的ElMessage（因为request.js已经弹了提示，避免重复）
+        // ElMessage.error(err.message || '修改失败，请重试');
+        // 【删除】移除抛错（避免ProfileView的catch二次处理）
+        // throw err;
+        return false; // 【新增】返回false，让前端感知失败
       }
     },
     
@@ -128,7 +138,11 @@ export const useUserStore = defineStore('user', {
 // userStore.js 的 register 方法（修改参数传递逻辑）
 async register(userData) {
   const now = Date.now();
-  if (now - this.lastOperateTime < this.operateInterval) return;
+    // 【修改】重复操作时，返回false而非空return，让前端感知
+      if (now - this.lastOperateTime < this.operateInterval) {
+        ElMessage.warning('操作太频繁，请稍后再试'); // 【新增】友好提示重复操作
+        return false;
+      }
   this.lastOperateTime = now;
 
   try {
@@ -147,12 +161,16 @@ async register(userData) {
       ElMessage.success(res.msg || '注册成功！请登录');
       return res;
     } else {
-      throw new Error(res.msg || '注册失败');
+       // 【修改】后端返回success:false时，不再抛错，直接返回false（request.js已弹提示）
+          return false;
     }
   } catch (err) {
     console.error('注册异常：', err);
-    //ElMessage.error(err.message || '注册失败，请重试');
-    throw err;
+     // 保留原有注释，不再弹提示（request.js已处理）
+        //ElMessage.error(err.message || '注册失败，请重试');
+        // 【删除】移除抛错（避免RegisterView的catch二次处理）
+        // throw err;
+        return false; // 【新增】返回false，让前端感知失败
   }
 },
 
@@ -161,7 +179,10 @@ async register(userData) {
       // 解构参数：包含 confirmNewPassword（与后端接收字段一致）
       const { phone, code, newPassword, confirmNewPassword } = resetData;
       const now = Date.now();
-      if (now - this.lastOperateTime < this.operateInterval) return false;
+      if (now - this.lastOperateTime < this.operateInterval) {
+        ElMessage.warning('操作太频繁，请稍后再试'); // 【新增】友好提示重复操作
+        return false;
+      }
       this.lastOperateTime = now;
 
       // 🌟 前端预校验（按约束规则：特殊字符仅 !@#$%&*()_+.，无空格）
@@ -217,7 +238,7 @@ async register(userData) {
         }
       } catch (err) {
         console.error('重置密码异常：', err);
-        ElMessage.error('密码重置失败：' + err.message);
+        //ElMessage.error('密码重置失败：' + err.message);
         return false;
       }
     },
